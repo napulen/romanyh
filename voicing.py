@@ -3,6 +3,7 @@ import argparse
 import itertools
 from fractions import Fraction
 
+from music21.layout import StaffGroup
 from music21.converter import parse
 from music21.note import Note
 from music21.pitch import Pitch
@@ -162,7 +163,7 @@ def chordCost(key, chord):
     return cost
 
 
-def voiceProgression(key, chordProgression):
+def voiceProgression(romanNumerals):
     """Voices a chord progression in a specified key using DP.
 
     Follows eighteenth-century voice leading procedures, as guided by the cost
@@ -170,14 +171,10 @@ def voiceProgression(key, chordProgression):
     Returns a list of four-pitch chords, corresponding to successive Roman
     numerals in the chord progression.
     """
-    key = Key(key)
-    if isinstance(chordProgression, str):
-        chordProgression = list(filter(None, chordProgression.split()))
-
-    dp = [{} for _ in chordProgression]
-    for i, numeral in enumerate(chordProgression):
-        chord = RomanNumeral(numeral, key)
-        voicings = voiceChord(key, chord)
+    key = romanNumerals[0].key
+    dp = [{} for _ in romanNumerals]
+    for i, numeral in enumerate(romanNumerals):
+        voicings = voiceChord(key, numeral)
         if i == 0:
             for v in voicings:
                 dp[0][v.pitches] = (chordCost(key, v), None)
@@ -193,61 +190,54 @@ def voiceProgression(key, chordProgression):
 
     cur, (totalCost, _) = min(dp[-1].items(), key=lambda p: p[1][0])
     ret = []
-    for i in reversed(range(len(chordProgression))):
-        ret.append(Chord(cur, lyric=chordProgression[i]))
+    for i in reversed(range(len(romanNumerals))):
+        ret.append(Chord(cur))
         cur = dp[i][cur][1]
     return list(reversed(ret)), totalCost
 
 
-def generateScore(chords, lengths=None, ts="4/4"):
-    """Generates a four-part score from a sequence of chords.
+def decorateScore(romantext):  # Previously generateScore
+    """Decorate an annotated chorale into piano form.
 
-    Soprano and alto parts are displayed on the top (treble) clef, while tenor
-    and bass parts are displayed on the bottom (bass) clef, with correct stem
-    directions.
+    Receives a romantext stream that has been properly voiced by the
+    dynamic programming algorithm, replacing the 1-part layout with a
+    2-part grand staff piano layout in SA-TB form.
     """
-    if lengths is None:
-        lengths = [1 for _ in chords]
-    voices = [Voice([Piano()]) for _ in range(4)]
-    for chord, length in zip(chords, lengths):
-        bass, tenor, alto, soprano = [
-            Note(p, quarterLength=length) for p in chord.pitches
-        ]
-        bass.addLyric(chord.lyric)
-        bass.stemDirection = alto.stemDirection = "down"
-        tenor.stemDirection = soprano.stemDirection = "up"
-        voices[0].append(soprano)
-        voices[1].append(alto)
-        voices[2].append(tenor)
-        voices[3].append(bass)
-
-    female = Part([TrebleClef(), TimeSignature(ts), voices[0], voices[1]])
-    male = Part([BassClef(), TimeSignature(ts), voices[2], voices[3]])
-    score = Score([female, male])
+    romanNumerals = romantext.recurse().getElementsByClass("RomanNumeral")
+    score = romantext.template(fillWithRests=False)
+    trebleStaff = score.parts[0]
+    bassStaff = copy.deepcopy(trebleStaff)
+    trebleStaff[0].insert(0, TrebleClef())
+    bassStaff[0].insert(0, BassClef())
+    for rn in romanNumerals:
+        b, t, a, s = copy.deepcopy(rn.notes)
+        b.duration = t.duration = a.duration = s.duration = rn.duration
+        b.lyric = rn.lyric
+        trebleStaff.measure(rn.measureNumber).insert(rn.offset, s)
+        trebleStaff.measure(rn.measureNumber).insert(rn.offset, a)
+        bassStaff.measure(rn.measureNumber).insert(rn.offset, t)
+        bassStaff.measure(rn.measureNumber).insert(rn.offset, b)
+    staffGroup = StaffGroup(
+        [trebleStaff, bassStaff], name="Harmonic reduction", symbol="brace"
+    )
+    score.insert(0, bassStaff)
+    score.insert(0, staffGroup)
+    for measure in score.recurse().getElementsByClass("Measure"):
+        measure.makeVoices(inPlace=True)
     return score
 
 
-def generateChorale(chorale, lengths=None, ts="4/4"):
-    """Voices a chorale with multiple phrases.
+def voiceLeader(romantext):  # Previously generateChorale
+    """Produces stylistic voice leading for a given stream of RomanNumerals.
 
-    Each phrase should be placed on a line in the input string, with the key at
-    the beginning followed by space-separated roman numerals. For example,
-
-     D: I vi I6 IV I64 V I
-     D: I6 V64 I IV6 V I6 V
-     D: I IV6 I6 IV I64 V7 vi
-     D: I6 V43 I I6 ii65 V I
-     A: I IV64 I vi ii6 V7 I
-     b: iv6 i64 iv iio6 i64 V7 i
-     A: IV IV V I6 ii V65 I
-     D: IV6 I V65 I ii65 V7 I
+    The input is a stream, parsed from an input RomanText file.
+    The chords, time signature and key are all extracted from there.
     """
-    lines = [line.strip().split(":") for line in chorale.split("\n") if line.strip()]
-    progression = []
-    for key, chords in lines:
-        phrase, _ = voiceProgression(key, chords)
-        progression.extend(phrase)
-    score = generateScore(progression, lengths, ts)
+    romanNumerals = list(romantext.recurse().getElementsByClass("RomanNumeral"))
+    voicings, score = voiceProgression(romanNumerals)
+    for idx, romanNumeral in enumerate(romanNumerals):
+        romanNumeral.notes = voicings[idx].notes
+    score = decorateScore(romantext)
     return score
 
 
@@ -264,19 +254,8 @@ def main():
         help="A RomanText input file with the chord progression",
     )
     args = parser.parse_args()
-    s = parse(args.input, format="rntxt")
-    key_it = s.flat.getElementsByClass("Key")
-    key = next(key_it, Key("C")).tonicPitchNameWithCase
-    ts_it = s.flat.getElementsByClass("TimeSignature")
-    ts = next(ts_it, TimeSignature("4/4")).ratioString
-    durations = []
-    chords = []
-    for rn in s.flat.getElementsByClass("RomanNumeral"):
-        durations.append(rn.duration.quarterLength)
-        chords.append(rn.figure)
-    chord_progression = " ".join(chords)
-    key_and_chords = f"{key}: {chord_progression}"
-    generateChorale(key_and_chords, durations, ts).show()
+    s = parse(args.input, format="rntext")
+    voiceLeader(s).show()
 
 
 if __name__ == "__main__":
