@@ -1,5 +1,6 @@
 import copy
 import argparse
+import logging
 import itertools
 from fractions import Fraction
 
@@ -14,146 +15,267 @@ from music21.meter import TimeSignature
 from music21.clef import BassClef, TrebleClef
 from music21.instrument import Piano
 from music21.stream import Part, Score, Voice
-
-SOPRANO_RANGE = (Pitch("C4"), Pitch("G5"))
-ALTO_RANGE = (Pitch("G3"), Pitch("C5"))
-TENOR_RANGE = (Pitch("C3"), Pitch("G4"))
-BASS_RANGE = (Pitch("E2"), Pitch("C4"))
+from music21.interval import Interval
 
 
-def voiceNote(noteName, pitchRange):
-    """Generates voicings for a note in a given pitch range.
-
-    Returns a list of `Pitch` objects with the same name as the note that also
-    fall within the voice's range.
-    """
-    lowerOctave = pitchRange[0].octave
-    upperOctave = pitchRange[1].octave
-    for octave in range(lowerOctave, upperOctave + 1):
-        n = Pitch(noteName + str(octave))
-        if pitchRange[0] <= n <= pitchRange[1]:
-            yield n
+voice_ranges = (
+    (Pitch("C4"), Pitch("G5")),  # Soprano
+    (Pitch("G3"), Pitch("D5")),  # Alto
+    (Pitch("C3"), Pitch("G4")),  # Tenor
+    (Pitch("E2"), Pitch("C4")),  # Bass
+)
 
 
-def _voiceTriadUnordered(noteNames):
-    assert len(noteNames) == 3
-    for tenor, alto, soprano in itertools.permutations(noteNames, 3):
-        for sopranoNote in voiceNote(soprano, SOPRANO_RANGE):
-            altoMin = max((ALTO_RANGE[0], sopranoNote.transpose("-P8")))
-            altoMax = min((ALTO_RANGE[1], sopranoNote))
-            for altoNote in voiceNote(alto, (altoMin, altoMax)):
-                tenorMin = max((TENOR_RANGE[0], altoNote.transpose("-P8")))
-                tenorMax = min((TENOR_RANGE[1], altoNote))
-                for tenorNote in voiceNote(tenor, (tenorMin, tenorMax)):
-                    yield Chord([tenorNote, altoNote, sopranoNote])
+voicingCache = {}
+costCache = {}
+
+logging.basicConfig(filename="example.log", filemode="w", level=logging.DEBUG)
 
 
-def _voiceChord(noteNames):
-    assert len(noteNames) == 4
-    bass = noteNames.pop(0)
-    for chord in _voiceTriadUnordered(noteNames):
-        for bassNote in voiceNote(bass, BASS_RANGE):
-            if bassNote <= chord.bass():
-                chord4 = copy.deepcopy(chord)
-                chord4.add(bassNote)
-                yield chord4
+def fetchVoicing(key, chord):
+    key_and_chord = (key, chord.figureAndKey)
+    if key_and_chord in voicingCache:
+        yield from voicingCache[key_and_chord]
+    else:
+        voicingCache[key_and_chord] = list(voiceChord(key, chord))
+        yield from voicingCache[key_and_chord]
+
+
+def fetchCost(key, chord1, chord2):
+    key_and_chords = (key, chord1.pitches, chord2.pitches)
+    if key_and_chords in costCache:
+        return costCache[key_and_chords]
+    else:
+        costCache[key_and_chords] = progressionCost(key, chord1, chord2)
+        return costCache[key_and_chords]
+
+
+def _voice(part, voicingSoFar, remainingNotes):
+    if part >= 0:
+        voiceRange = voice_ranges[part]
+        constraint = voicingSoFar[-1]
+        octaveStart = constraint.octave
+        octaveEnd = voiceRange[1].octave
+        for noteName in set(remainingNotes):
+            newRemaining = remainingNotes.copy()
+            newRemaining.remove(noteName)
+            for octave in range(octaveStart, octaveEnd + 1):
+                pitch = Pitch(f"{noteName}{octave}")
+                if (
+                    pitch < constraint
+                    or pitch < voiceRange[0]
+                    or pitch > voiceRange[1]
+                ):
+                    continue
+                yield from _voice(
+                    part - 1, voicingSoFar + [pitch], newRemaining
+                )
+    else:
+        # Time to break the recursion
+        notes = [Pitch(n) for n in voicingSoFar]
+        intervals = [Interval(notes[i], notes[i + 1]) for i in range(3)]
+        if (
+            intervals.count(Interval("P1")) <= 1
+            and intervals[1].generic.undirected < 8
+            and intervals[2].generic.undirected < 8
+        ):
+            yield Chord(voicingSoFar)
+        return
 
 
 def voiceChord(key, chord):
-    """Generates four-part voicings for a fifth or seventh chord.
-
-    The bass note is kept intact, though other notes (and doublings) are
-    allowed to vary between different voicings. Intervals between adjacent
-    non-bass parts are limited to a single octave.
-    """
-    leadingTone = key.getLeadingTone().name
-    noteNames = [pitch.name for pitch in chord.pitches]
-    if chord.containsSeventh():
-        yield from _voiceChord(noteNames)
-    elif chord.inversion() == 2:
-        # must double the fifth
-        yield from _voiceChord(noteNames + [chord.fifth.name])
-    else:
-        # double the root
-        if chord.root().name != leadingTone:
-            yield from _voiceChord(noteNames + [chord.root().name])
-        # double the third
-        if chord.third.name != leadingTone:
-            yield from _voiceChord(noteNames + [chord.third.name])
-        # double the fifth
-        if chord.fifth.name != leadingTone:
-            yield from _voiceChord(noteNames + [chord.fifth.name])
-        # option to omit the fifth
-        if chord.romanNumeral == "I" and chord.inversion() == 0:
-            yield from _voiceChord([chord.root().name] * 3 + [chord.third.name])
+    pitchNames = list(chord.pitchNames)
+    if chord.isTriad():
+        if chord.inversion() != 2:
+            doublings = [
+                pitchNames + [chord.root().name],
+                pitchNames + [chord.fifth.name],
+                pitchNames + [chord.third.name],
+                pitchNames[:2] + [chord.root().name] * 2,
+            ]
+        elif chord.inversion() == 2:
+            doublings = [pitchNames + [chord.fifth.name]]
+    elif chord.isSeventh():
+        doublings = [pitchNames]
+        # if chord.inversion() == 0:
+        #     root, third, fifth, seventh = pitchNames
+        #     doublings += [
+        #         [root, third, root, seventh],
+        #         [root, root, fifth, seventh],
+        #     ]
+        # elif chord.inversion() == 1:
+        #     third, fifth, seventh, root = pitchNames
+        #     doublings += [
+        #         [third, root, seventh, root],
+        #     ]
+        # elif chord.inversion() == 2:
+        #     fifth, seventh, root, third = pitchNames
+        #     doublings += [
+        #         [fifth, seventh, root, root],
+        #     ]
+        # elif chord.inversion() == 3:
+        #     seventh, root, third, fifth = pitchNames
+        #     doublings += [
+        #         [seventh, root, third, root],
+        #         [seventh, root, root, fifth],
+        #     ]
+    for doubling in doublings:
+        bassRange = voice_ranges[3]
+        octaveStart = bassRange[0].octave
+        octaveEnd = bassRange[1].octave
+        for octave in range(octaveStart, octaveEnd + 1):
+            noteName = doubling[0]
+            pitch = Pitch(f"{noteName}{octave}")
+            if bassRange[0] <= pitch <= bassRange[1]:
+                yield from _voice(2, [pitch], doubling[1:])
 
 
 def progressionCost(key, chord1, chord2):
-    """Computes elements of cost between two chords: contrary motion, etc."""
-    cost = 0
-
-    # Overlapping voices
-    if (
-        chord2[0] > chord1[1]
-        or chord2[1] < chord1[0]
-        or chord2[1] > chord1[2]
-        or chord2[2] < chord1[1]
-        or chord2[2] > chord1[3]
-        or chord2[3] < chord1[2]
-    ):
-        cost += 40
-
-    # Penalize the same chord
-    if chord1.notes == chord2.notes:
-        cost += 2
-
-    # Avoid big jumps
-    diff = [abs(chord1.pitches[i].midi - chord2.pitches[i].midi) for i in range(4)]
-    cost += (diff[3] // 3) ** 2 if diff[3] else 1
-    cost += diff[2] ** 2 // 3
-    cost += diff[1] ** 2 // 3
-    cost += diff[0] ** 2 // 50 if diff[0] != 12 else 0
-
-    # Contrary motion is good, parallel fifths are bad
+    """An alternative algorithm for computing the cost"""
+    idString = f"{key.tonicPitchNameWithCase}:"
     for i in range(4):
-        for j in range(i + 1, 4):
-            t1, t2 = chord1.pitches[j], chord2.pitches[j]
-            b1, b2 = chord1.pitches[i], chord2.pitches[i]
-            if t1 == t2 and b1 == b2:  # No motion
-                continue
-            i1, i2 = t1.midi - b1.midi, t2.midi - b2.midi
-            if i1 % 12 == i2 % 12 == 7:  # Parallel fifth
-                cost += 60
-            if i1 % 12 == i2 % 12 == 0:  # Parallel octave
-                cost += 100
-            if i == 0 and j == 3:  # Soprano and bass not contrary
-                if (t2 > t1 and b2 > b1) or (t2 < t1 and b2 < b1):
-                    cost += 2
+        idString += f" {chord1[i].pitch.nameWithOctave}{chord2[i].pitch.nameWithOctave}"
+    if idString == "B-: B-3B-2 B-3B-3 B-3D4 D4F4":
+        kp = 1
+    logging.info(idString)
+    FORBIDDEN = 64
+    VERYBAD = 8
+    BAD = 4
+    MAYBEBAD = 2
+    NOTIDEAL = 1
+    horizontalIntervals = [Interval(chord1[i], chord2[i]) for i in range(4)]
+    verticalIntervals1 = [
+        Interval(chord1[i], chord1[j])
+        for i in range(3)
+        for j in range(i + 1, 4)
+    ]
+    verticalIntervals2 = [
+        Interval(chord2[i], chord2[j])
+        for i in range(3)
+        for j in range(i + 1, 4)
+    ]
 
-    # Chordal 7th should resolve downward or stay
-    if chord1.seventh:
-        seventhVoice = chord1.pitches.index(chord1.seventh)
-        delta = chord2.pitches[seventhVoice].midi - chord1.seventh.midi
-        if delta < -2 or delta > 0:
-            cost += 100
+    cost = 0
+    penalizations = []
 
-    # V->I means ti->do or ti->sol
-    pitches = key.getPitches()
-    pitches[6] = key.getLeadingTone()
+    # No duplicate chords
+    if chord1.notes == chord2.notes:
+        cost += FORBIDDEN
+        penalizations.append("IDENTICAL_VOICING")
+
+    # All voices in the same direction
     if (
-        chord1.root().name
-        in (
-            pitches[4].name,
-            pitches[6].name,
-        )
-        and chord2.root().name in (pitches[0].name, pitches[5].name)
-        and pitches[6].name in chord1.pitchNames
+        horizontalIntervals[0].direction
+        == horizontalIntervals[1].direction
+        == horizontalIntervals[2].direction
+        == horizontalIntervals[3].direction
     ):
-        voice = chord1.pitchNames.index(pitches[6].name)
-        delta = chord2.pitches[voice].midi - chord1.pitches[voice].midi
-        if not (delta == 1 or (delta == -4 and voice >= 1 and voice <= 2)):
-            cost += 100
+        cost += FORBIDDEN
+        penalizations.append("ALLVOICES_SAME_DIRECTION")
 
+    # Melodic intervals for individual voices
+    for n1n2 in horizontalIntervals:
+        if (
+            n1n2.simpleName.startswith("A")
+            or n1n2.simpleName.startswith("D")
+            or n1n2.simpleName == "m7"
+            or n1n2.simpleName == "M7"
+        ):
+            cost += FORBIDDEN
+            penalizations.append("MELODIC_INTERVAL_FORBIDDEN")
+        elif abs(n1n2.semitones) > 12:
+            cost += VERYBAD
+            penalizations.append("MELODIC_INTERVAL_BEYONDOCTAVE")
+        elif abs(n1n2.semitones) > 7:
+            cost += BAD
+            penalizations.append("MELODIC_INTERVAL_BEYONDFIFTH")
+        elif abs(n1n2.semitones) > 4:
+            cost += MAYBEBAD
+            penalizations.append("MELODIC_INTERVAL_BEYONDTHIRD")
+        elif abs(n1n2.semitones) > 2:
+            cost += NOTIDEAL
+            penalizations.append("MELODIC_INTERVAL_BEYONDSECOND")
+
+    # Parallel motion and unison
+    for i1j1, i2j2 in zip(verticalIntervals1, verticalIntervals2):
+        # Unison arrival
+        if (
+            i2j2.name == "P1"
+            and Interval(i1j1.noteStart, i2j2.noteStart).generic.directed != 2
+            and Interval(i1j1.noteEnd, i2j2.noteStart).generic.directed != -2
+        ):
+            cost += VERYBAD
+            penalizations.append("UNISON_BY_LEAP")
+        # Oblique motion is fine
+        elif i1j1.noteStart == i2j2.noteStart or i1j1.noteEnd == i2j2.noteEnd:
+            continue
+        # Parallel fifths
+        if i1j1.generic.mod7 == 5 and i2j2.generic.mod7 == 5:
+            cost += FORBIDDEN
+            penalizations.append("PARALLEL_FIFTH")
+        # Parallel octave/unison
+        elif i1j1.generic.mod7 == 1 and i2j2.generic.mod7 == 1:
+            cost += FORBIDDEN
+            penalizations.append("PARALLEL_OCTAVE")
+
+    # Hidden octaves/fifths in extreme voices
+    if (
+        verticalIntervals2[2].generic.mod7 == 5
+        and horizontalIntervals[0].direction
+        == horizontalIntervals[3].direction
+    ):
+        cost += VERYBAD
+        penalizations.append("HIDDEN_FIFTH")
+
+    if (
+        verticalIntervals2[2].generic.mod7 == 1
+        and horizontalIntervals[0].direction
+        == horizontalIntervals[3].direction
+    ):
+        cost += VERYBAD
+        penalizations.append("HIDDEN_OCTAVE")
+
+    # Voice crossing
+    for i in range(3):
+        if (
+            horizontalIntervals[i].noteEnd
+            > horizontalIntervals[i + 1].noteStart
+            or horizontalIntervals[i + 1].noteEnd
+            < horizontalIntervals[i].noteStart
+        ):
+            cost += BAD
+            penalizations.append("VOICE_CROSSING")
+
+    # Sevenths
+    if chord1.seventh:
+        seventhIndex = chord1.pitches.index(chord1.seventh)
+        if (
+            horizontalIntervals[seventhIndex].generic.directed != 1
+            and horizontalIntervals[seventhIndex].generic.directed != -2
+        ):
+            cost += VERYBAD
+            penalizations.append("SEVENTH_UNRESOLVED")
+
+    # Leading tone resolution
+    leadingTone = key.getLeadingTone().name
+    root1 = chord1.root().name
+    root2 = chord2.root().name
+    if root1 == key.pitchFromDegree(5).name or root1 == leadingTone:
+        if root2 == key.pitchFromDegree(
+            1
+        ).name or root2 == key.pitchFromDegree(6):
+            if leadingTone in chord1.pitchNames:
+                leadingToneIndex = chord1.pitchNames.index(leadingTone)
+                if (
+                    horizontalIntervals[leadingToneIndex].name != "M2"
+                    and horizontalIntervals[leadingToneIndex].name != "M-3"
+                ):
+                    cost += VERYBAD
+                    penalizations.append("LEADINGTONE_UNRESOLVED")
+
+    logging.info(cost)
+    for rule in penalizations:
+        logging.warning(rule)
     return cost
 
 
@@ -175,10 +297,11 @@ def voiceProgression(romanNumerals):
     Returns a list of four-pitch chords, corresponding to successive Roman
     numerals in the chord progression.
     """
-    key = romanNumerals[0].key
+    keys = [rn.secondaryRomanNumeralKey or rn.key for rn in romanNumerals]
     dp = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
-        voicings = voiceChord(key, numeral)
+        key = keys[i]
+        voicings = fetchVoicing(key, numeral)
         if i == 0:
             for v in voicings:
                 dp[0][v.pitches] = (chordCost(key, v), None)
@@ -187,7 +310,8 @@ def voiceProgression(romanNumerals):
                 best = (float("inf"), None)
                 for pv_pitches, (pcost, _) in dp[i - 1].items():
                     pv = Chord(pv_pitches)
-                    ccost = pcost + progressionCost(key, pv, v)
+                    pvkey = keys[i - 1]
+                    ccost = pcost + fetchCost(pvkey, pv, v)
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
                 dp[i][v.pitches] = (best[0] + chordCost(key, v), best[1])
@@ -237,7 +361,9 @@ def voiceLeader(romantext):  # Previously generateChorale
     The input is a stream, parsed from an input RomanText file.
     The chords, time signature and key are all extracted from there.
     """
-    romanNumerals = list(romantext.recurse().getElementsByClass("RomanNumeral"))
+    romanNumerals = list(
+        romantext.recurse().getElementsByClass("RomanNumeral")
+    )
     voicings, score = voiceProgression(romanNumerals)
     for idx, romanNumeral in enumerate(romanNumerals):
         romanNumeral.notes = voicings[idx].notes
