@@ -17,14 +17,12 @@ from music21.instrument import Piano
 from music21.stream import Part, Score, Voice
 from music21.interval import Interval
 
-
 voice_ranges = (
     (Pitch("C4"), Pitch("G5")),  # Soprano
     (Pitch("G3"), Pitch("D5")),  # Alto
     (Pitch("C3"), Pitch("G4")),  # Tenor
     (Pitch("E2"), Pitch("C4")),  # Bass
 )
-
 
 voicingCache = {}
 costCache = {}
@@ -53,16 +51,16 @@ def fetchCost(key, chord1, chord2):
 def _voice(part, voicingSoFar, remainingNotes):
     if part >= 0:
         voiceRange = voice_ranges[part]
-        constraint = voicingSoFar[-1]
-        octaveStart = constraint.octave
+        lowerVoice = voicingSoFar[-1]
+        octaveStart = max(lowerVoice.octave, voiceRange[0].octave)
         octaveEnd = voiceRange[1].octave
         for noteName in set(remainingNotes):
             newRemaining = remainingNotes.copy()
             newRemaining.remove(noteName)
             for octave in range(octaveStart, octaveEnd + 1):
-                pitch = Pitch(f"{noteName}{octave}")
+                pitch = Pitch(noteName, octave=octave)
                 if (
-                    pitch < constraint
+                    pitch < lowerVoice
                     or pitch < voiceRange[0]
                     or pitch > voiceRange[1]
                 ):
@@ -76,8 +74,8 @@ def _voice(part, voicingSoFar, remainingNotes):
         intervals = [Interval(notes[i], notes[i + 1]) for i in range(3)]
         if (
             intervals.count(Interval("P1")) <= 1
-            and intervals[1].generic.undirected < 8
-            and intervals[2].generic.undirected < 8
+            and 1 <= intervals[1].generic.directed <= 8
+            and 1 <= intervals[2].generic.directed <= 8
         ):
             yield Chord(voicingSoFar)
         return
@@ -97,6 +95,10 @@ def voiceChord(key, chord):
             doublings = [pitchNames + [chord.fifth.name]]
     elif chord.isSeventh():
         doublings = [pitchNames]
+        # TODO: Although it would be great to have sevenths
+        # with omitted notes, they are no longer detected
+        # as seventh chords by music21, and that makes it
+        # very difficult (atm) to deal with them
         # if chord.inversion() == 0:
         #     root, third, fifth, seventh = pitchNames
         #     doublings += [
@@ -125,7 +127,7 @@ def voiceChord(key, chord):
         octaveEnd = bassRange[1].octave
         for octave in range(octaveStart, octaveEnd + 1):
             noteName = doubling[0]
-            pitch = Pitch(f"{noteName}{octave}")
+            pitch = Pitch(noteName, octave=octave)
             if bassRange[0] <= pitch <= bassRange[1]:
                 yield from _voice(2, [pitch], doubling[1:])
 
@@ -160,7 +162,7 @@ def progressionCost(key, chord1, chord2):
 
     # No duplicate chords
     if chord1.notes == chord2.notes:
-        cost += FORBIDDEN
+        cost += VERYBAD
         penalizations.append("IDENTICAL_VOICING")
 
     # All voices in the same direction
@@ -176,8 +178,9 @@ def progressionCost(key, chord1, chord2):
     # Melodic intervals for individual voices
     for n1n2 in horizontalIntervals:
         if (
-            n1n2.simpleName.startswith("A")
-            or n1n2.simpleName.startswith("D")
+            n1n2.simpleName == "A2"
+            or n1n2.simpleName == 'A4'
+            or n1n2.simpleName == 'D5'
             or n1n2.simpleName == "m7"
             or n1n2.simpleName == "M7"
         ):
@@ -224,7 +227,7 @@ def progressionCost(key, chord1, chord2):
         and horizontalIntervals[0].direction
         == horizontalIntervals[3].direction
     ):
-        cost += VERYBAD
+        cost += FORBIDDEN
         penalizations.append("HIDDEN_FIFTH")
 
     if (
@@ -232,7 +235,7 @@ def progressionCost(key, chord1, chord2):
         and horizontalIntervals[0].direction
         == horizontalIntervals[3].direction
     ):
-        cost += VERYBAD
+        cost += FORBIDDEN
         penalizations.append("HIDDEN_OCTAVE")
 
     # Voice crossing
@@ -246,7 +249,17 @@ def progressionCost(key, chord1, chord2):
             cost += BAD
             penalizations.append("VOICE_CROSSING")
 
-    # Sevenths
+    # Sevenths preparation
+    if chord2.seventh:
+        seventhIndex = chord2.pitches.index(chord2.seventh)
+        if (
+            horizontalIntervals[seventhIndex].generic.directed != 1
+            and horizontalIntervals[seventhIndex].generic.undirected != 2
+        ):
+            cost += BAD
+            penalizations.append('SEVENTH_UNPREPARED')
+    
+    # Sevenths resolution
     if chord1.seventh:
         seventhIndex = chord1.pitches.index(chord1.seventh)
         if (
@@ -267,7 +280,7 @@ def progressionCost(key, chord1, chord2):
             if leadingTone in chord1.pitchNames:
                 leadingToneIndex = chord1.pitchNames.index(leadingTone)
                 if (
-                    horizontalIntervals[leadingToneIndex].name != "M2"
+                    horizontalIntervals[leadingToneIndex].name != "m2"
                     and horizontalIntervals[leadingToneIndex].name != "M-3"
                 ):
                     cost += VERYBAD
@@ -281,11 +294,37 @@ def progressionCost(key, chord1, chord2):
 
 def chordCost(key, chord):
     """Computes elements of cost that only pertain to a single chord."""
+    FORBIDDEN = 64
+    VERYBAD = 8
+    BAD = 4
+    MAYBEBAD = 2
+    NOTIDEAL = 1
+
+    idString = f"{key.tonicPitchNameWithCase}:"
+    for i in range(4):
+        idString += f" {chord[i].pitch.nameWithOctave}"
+    if idString == "B-: B-3B-2 B-3B-3 B-3D4 D4F4":
+        kp = 1
+    logging.info(idString)
+
     cost = 0
-    if chord.inversion() == 0:
-        # Slightly prefer to double the root in a R.P. chord
-        if chord.pitchClasses.count(chord.root().pitchClass) <= 1:
-            cost += 1
+    penalizations = []
+    if chord.isTriad():
+        if chord.inversion() < 2:
+            # In root postion and first inversion, double the root
+            if chord.pitchNames.count(chord.root().name) <= 1:
+                cost += NOTIDEAL
+                penalizations.append('VERTICAL_NOT_DOUBLINGROOT')
+    elif chord.isSeventh():
+        # In seventh chords, prefer to play all the notes
+        if set(chord.pitchNames) != 4:
+            cost += MAYBEBAD
+            penalizations.append('VERTICAL_SEVENTH_MISSINGNOTE')
+    
+    logging.info(cost)
+    for rule in penalizations:
+        logging.warning(rule)
+
     return cost
 
 
