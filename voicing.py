@@ -3,6 +3,7 @@ import argparse
 import logging
 import itertools
 from fractions import Fraction
+from functools import lru_cache
 
 from music21.layout import StaffGroup
 from music21.converter import parse
@@ -17,6 +18,8 @@ from music21.instrument import Piano
 from music21.stream import Part, Score, Voice
 from music21.interval import Interval
 
+from unconventional_chords import unconventional_chords
+
 voice_ranges = (
     (Pitch("C4"), Pitch("G5")),  # Soprano
     (Pitch("G3"), Pitch("D5")),  # Alto
@@ -26,26 +29,27 @@ voice_ranges = (
 
 voicingCache = {}
 costCache = {}
+verticalIntervalCache = {}
 
 logging.basicConfig(filename="example.log", filemode="w", level=logging.DEBUG)
 
 
-def fetchVoicing(key, chord):
-    key_and_chord = (key, chord.figureAndKey)
-    if key_and_chord in voicingCache:
-        yield from voicingCache[key_and_chord]
+def fetchVoicing(key, figure):
+    key_and_figure = (key, figure)
+    if key_and_figure in voicingCache:
+        yield from voicingCache[key_and_figure]
     else:
-        voicingCache[key_and_chord] = list(voiceChord(key, chord))
-        yield from voicingCache[key_and_chord]
+        voicingCache[key_and_figure] = voiceChord(key, figure)
+        yield from voicingCache[key_and_figure]
 
 
-def fetchCost(key, chord1, chord2):
-    key_and_chords = (key, chord1.pitches, chord2.pitches)
-    if key_and_chords in costCache:
-        return costCache[key_and_chords]
+def fetchCost(key, pitches1, pitches2):
+    key_and_pitches = (key, pitches1, pitches2)
+    if key_and_pitches in costCache:
+        return costCache[key_and_pitches]
     else:
-        costCache[key_and_chords] = progressionCost(key, chord1, chord2)
-        return costCache[key_and_chords]
+        costCache[key_and_pitches] = progressionCost(key, pitches1, pitches2)
+        return costCache[key_and_pitches]
 
 
 def _voice(part, voicingSoFar, remainingNotes):
@@ -72,16 +76,21 @@ def _voice(part, voicingSoFar, remainingNotes):
         # Time to break the recursion
         notes = [Pitch(n) for n in voicingSoFar]
         intervals = [Interval(notes[i], notes[i + 1]) for i in range(3)]
+        tenorToSoprano = Interval(notes[1], notes[3])
         if (
             intervals.count(Interval("P1")) <= 1
-            and 1 <= intervals[1].generic.directed <= 8
-            and 1 <= intervals[2].generic.directed <= 8
+            # and 1 <= intervals[1].generic.directed <= 8
+            # and 1 <= intervals[2].generic.directed <= 8
+            and 1 <= tenorToSoprano.generic.directed <= 8
         ):
             yield Chord(voicingSoFar)
         return
 
 
-def voiceChord(key, chord):
+# @profile
+@lru_cache(maxsize=None)
+def voiceChord(key, figure):
+    chord = RomanNumeral(figure, key)
     pitchNames = list(chord.pitchNames)
     if chord.isTriad():
         if chord.inversion() != 2:
@@ -92,7 +101,10 @@ def voiceChord(key, chord):
                 pitchNames[:2] + [chord.root().name] * 2,
             ]
         elif chord.inversion() == 2:
-            doublings = [pitchNames + [chord.fifth.name]]
+            doublings = [
+                pitchNames + [chord.root().name],
+                pitchNames + [chord.fifth.name],
+            ]
     elif chord.isSeventh():
         doublings = [pitchNames]
         # TODO: Although it would be great to have sevenths
@@ -129,11 +141,15 @@ def voiceChord(key, chord):
             noteName = doubling[0]
             pitch = Pitch(noteName, octave=octave)
             if bassRange[0] <= pitch <= bassRange[1]:
-                yield from _voice(2, [pitch], doubling[1:])
+                return list(_voice(2, [pitch], doubling[1:]))
 
 
-def progressionCost(key, chord1, chord2):
+# @profile
+@lru_cache(maxsize=None)
+def progressionCost(key, pitches1, pitches2):
     """An alternative algorithm for computing the cost"""
+    chord1 = Chord(pitches1)
+    chord2 = Chord(pitches2)
     idString = f"{key.tonicPitchNameWithCase}:"
     for i in range(4):
         idString += f" {chord1[i].pitch.nameWithOctave}{chord2[i].pitch.nameWithOctave}"
@@ -179,8 +195,8 @@ def progressionCost(key, chord1, chord2):
     for n1n2 in horizontalIntervals:
         if (
             n1n2.simpleName == "A2"
-            or n1n2.simpleName == 'A4'
-            or n1n2.simpleName == 'D5'
+            or n1n2.simpleName == "A4"
+            or n1n2.simpleName == "D5"
             or n1n2.simpleName == "m7"
             or n1n2.simpleName == "M7"
         ):
@@ -257,8 +273,8 @@ def progressionCost(key, chord1, chord2):
             and horizontalIntervals[seventhIndex].generic.undirected != 2
         ):
             cost += BAD
-            penalizations.append('SEVENTH_UNPREPARED')
-    
+            penalizations.append("SEVENTH_UNPREPARED")
+
     # Sevenths resolution
     if chord1.seventh:
         seventhIndex = chord1.pitches.index(chord1.seventh)
@@ -314,13 +330,13 @@ def chordCost(key, chord):
             # In root postion and first inversion, double the root
             if chord.pitchNames.count(chord.root().name) <= 1:
                 cost += NOTIDEAL
-                penalizations.append('VERTICAL_NOT_DOUBLINGROOT')
+                penalizations.append("VERTICAL_NOT_DOUBLINGROOT")
     elif chord.isSeventh():
         # In seventh chords, prefer to play all the notes
         if set(chord.pitchNames) != 4:
             cost += MAYBEBAD
-            penalizations.append('VERTICAL_SEVENTH_MISSINGNOTE')
-    
+            penalizations.append("VERTICAL_SEVENTH_MISSINGNOTE")
+
     logging.info(cost)
     for rule in penalizations:
         logging.warning(rule)
@@ -328,6 +344,7 @@ def chordCost(key, chord):
     return cost
 
 
+# @profile
 def voiceProgression(romanNumerals):
     """Voices a chord progression in a specified key using DP.
 
@@ -340,7 +357,7 @@ def voiceProgression(romanNumerals):
     dp = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
         key = keys[i]
-        voicings = fetchVoicing(key, numeral)
+        voicings = voiceChord(keys[0], numeral.figure)
         if i == 0:
             for v in voicings:
                 dp[0][v.pitches] = (chordCost(key, v), None)
@@ -350,7 +367,9 @@ def voiceProgression(romanNumerals):
                 for pv_pitches, (pcost, _) in dp[i - 1].items():
                     pv = Chord(pv_pitches)
                     pvkey = keys[i - 1]
-                    ccost = pcost + fetchCost(pvkey, pv, v)
+                    ccost = pcost + progressionCost(
+                        pvkey, pv.pitches, v.pitches
+                    )
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
                 dp[i][v.pitches] = (best[0] + chordCost(key, v), best[1])
@@ -403,6 +422,10 @@ def voiceLeader(romantext):  # Previously generateChorale
     romanNumerals = list(
         romantext.recurse().getElementsByClass("RomanNumeral")
     )
+    for rn in romanNumerals:
+        keyFigure = (rn.key.mode, rn.figure)
+        if keyFigure in unconventional_chords:
+            rn.figure = unconventional_chords[keyFigure]
     voicings, score = voiceProgression(romanNumerals)
     for idx, romanNumeral in enumerate(romanNumerals):
         romanNumeral.notes = voicings[idx].notes
