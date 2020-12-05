@@ -20,36 +20,13 @@ from music21.interval import Interval
 
 from unconventional_chords import unconventional_chords
 
+logging.basicConfig(filename="voiceleader.log", filemode="w", level=logging.DEBUG)
 voice_ranges = (
     (Pitch("C4"), Pitch("G5")),  # Soprano
     (Pitch("G3"), Pitch("D5")),  # Alto
     (Pitch("C3"), Pitch("G4")),  # Tenor
     (Pitch("E2"), Pitch("C4")),  # Bass
 )
-
-voicingCache = {}
-costCache = {}
-verticalIntervalCache = {}
-
-logging.basicConfig(filename="example.log", filemode="w", level=logging.DEBUG)
-
-
-def fetchVoicing(key, figure):
-    key_and_figure = (key, figure)
-    if key_and_figure in voicingCache:
-        yield from voicingCache[key_and_figure]
-    else:
-        voicingCache[key_and_figure] = voiceChord(key, figure)
-        yield from voicingCache[key_and_figure]
-
-
-def fetchCost(key, pitches1, pitches2):
-    key_and_pitches = (key, pitches1, pitches2)
-    if key_and_pitches in costCache:
-        return costCache[key_and_pitches]
-    else:
-        costCache[key_and_pitches] = progressionCost(key, pitches1, pitches2)
-        return costCache[key_and_pitches]
 
 
 def _voice(part, voicingSoFar, remainingNotes):
@@ -76,18 +53,16 @@ def _voice(part, voicingSoFar, remainingNotes):
         # Time to break the recursion
         notes = [Pitch(n) for n in voicingSoFar]
         intervals = [Interval(notes[i], notes[i + 1]) for i in range(3)]
-        tenorToSoprano = Interval(notes[1], notes[3])
         if (
             intervals.count(Interval("P1")) <= 1
-            # and 1 <= intervals[1].generic.directed <= 8
-            # and 1 <= intervals[2].generic.directed <= 8
-            and 1 <= tenorToSoprano.generic.directed <= 8
+            and 1 <= intervals[1].generic.directed <= 8
+            and 1 <= intervals[2].generic.directed <= 8
+            # and 1 <= tenorToSoprano.generic.directed <= 8
         ):
             yield Chord(voicingSoFar)
         return
 
 
-# @profile
 @lru_cache(maxsize=None)
 def voiceChord(key, figure):
     chord = RomanNumeral(figure, key)
@@ -144,7 +119,6 @@ def voiceChord(key, figure):
                 return list(_voice(2, [pitch], doubling[1:]))
 
 
-# @profile
 @lru_cache(maxsize=None)
 def progressionCost(key, pitches1, pitches2):
     """An alternative algorithm for computing the cost"""
@@ -344,7 +318,6 @@ def chordCost(key, chord):
     return cost
 
 
-# @profile
 def voiceProgression(romanNumerals):
     """Voices a chord progression in a specified key using DP.
 
@@ -357,7 +330,7 @@ def voiceProgression(romanNumerals):
     dp = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
         key = keys[i]
-        voicings = voiceChord(keys[0], numeral.figure)
+        voicings = voiceChord(key, numeral.figure)
         if i == 0:
             for v in voicings:
                 dp[0][v.pitches] = (chordCost(key, v), None)
@@ -367,6 +340,7 @@ def voiceProgression(romanNumerals):
                 for pv_pitches, (pcost, _) in dp[i - 1].items():
                     pv = Chord(pv_pitches)
                     pvkey = keys[i - 1]
+                    # pvkey = keys[0]
                     ccost = pcost + progressionCost(
                         pvkey, pv.pitches, v.pitches
                     )
