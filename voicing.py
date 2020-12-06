@@ -20,7 +20,7 @@ from music21.interval import Interval
 
 from unconventional_chords import unconventional_chords
 
-logging.basicConfig(filename="voiceleader.log", filemode="w", level=logging.DEBUG)
+logging.basicConfig(filename="romanyh.log", filemode="w", level=logging.DEBUG)
 voice_ranges = (
     (Pitch("C4"), Pitch("G5")),  # Soprano
     (Pitch("G3"), Pitch("D5")),  # Alto
@@ -29,12 +29,41 @@ voice_ranges = (
 )
 
 
+@lru_cache(maxsize=None)
+def getChordFromPitches(pitches):
+    return Chord(pitches)
+
+
+@lru_cache(maxsize=None)
+def getLeadingTone(key):
+    return key.getLeadingTone()
+
+
+@lru_cache(maxsize=None)
+def getVerticalIntervalsFromPitches(pitches):
+    return [
+        getInterval(pitches[i], pitches[j])
+        for i in range(3)
+        for j in range(i + 1, 4)
+    ]
+
+
+@lru_cache(maxsize=None)
+def getInterval(p1, p2):
+    return Interval(p1, p2)
+
+
+@lru_cache(maxsize=None)
+def isTriad(pitches):
+    return getChordFromPitches(pitches).isTriad()
+
+
 def _voice(part, voicingSoFar, remainingNotes):
     if part >= 0:
-        voiceRange = voice_ranges[part]
+        minPitch, maxPitch = voice_ranges[part]
         lowerVoice = voicingSoFar[-1]
-        octaveStart = max(lowerVoice.octave, voiceRange[0].octave)
-        octaveEnd = voiceRange[1].octave
+        octaveStart = max(lowerVoice.octave, minPitch.octave)
+        octaveEnd = maxPitch.octave
         for noteName in set(remainingNotes):
             newRemaining = remainingNotes.copy()
             newRemaining.remove(noteName)
@@ -42,8 +71,8 @@ def _voice(part, voicingSoFar, remainingNotes):
                 pitch = Pitch(noteName, octave=octave)
                 if (
                     pitch < lowerVoice
-                    or pitch < voiceRange[0]
-                    or pitch > voiceRange[1]
+                    or pitch < minPitch
+                    or pitch > maxPitch
                 ):
                     continue
                 yield from _voice(
@@ -51,23 +80,27 @@ def _voice(part, voicingSoFar, remainingNotes):
                 )
     else:
         # Time to break the recursion
-        notes = [Pitch(n) for n in voicingSoFar]
-        intervals = [Interval(notes[i], notes[i + 1]) for i in range(3)]
+        pitches = tuple([Pitch(n) for n in voicingSoFar])
+        intervals = [getInterval(pitches[i], pitches[i + 1]) for i in range(3)]
         if (
             intervals.count(Interval("P1")) <= 1
             and 1 <= intervals[1].generic.directed <= 8
             and 1 <= intervals[2].generic.directed <= 8
-            # and 1 <= tenorToSoprano.generic.directed <= 8
+            # and 1 <= tenorSoprano.generic.directed <= 8
         ):
-            yield Chord(voicingSoFar)
+            yield tuple([p.nameWithOctave for p in pitches])
         return
 
 
 @lru_cache(maxsize=None)
-def voiceChord(key, figure):
-    chord = RomanNumeral(figure, key)
+def voiceChord(pitches):
+    return [v for v in _voiceChord(pitches)]
+
+
+def _voiceChord(pitches):
+    chord = getChordFromPitches(pitches)
     pitchNames = list(chord.pitchNames)
-    if chord.isTriad():
+    if isTriad(frozenset(chord.pitchNames)):
         if chord.inversion() != 2:
             doublings = [
                 pitchNames + [chord.root().name],
@@ -82,48 +115,23 @@ def voiceChord(key, figure):
             ]
     elif chord.isSeventh():
         doublings = [pitchNames]
-        # TODO: Although it would be great to have sevenths
-        # with omitted notes, they are no longer detected
-        # as seventh chords by music21, and that makes it
-        # very difficult (atm) to deal with them
-        # if chord.inversion() == 0:
-        #     root, third, fifth, seventh = pitchNames
-        #     doublings += [
-        #         [root, third, root, seventh],
-        #         [root, root, fifth, seventh],
-        #     ]
-        # elif chord.inversion() == 1:
-        #     third, fifth, seventh, root = pitchNames
-        #     doublings += [
-        #         [third, root, seventh, root],
-        #     ]
-        # elif chord.inversion() == 2:
-        #     fifth, seventh, root, third = pitchNames
-        #     doublings += [
-        #         [fifth, seventh, root, root],
-        #     ]
-        # elif chord.inversion() == 3:
-        #     seventh, root, third, fifth = pitchNames
-        #     doublings += [
-        #         [seventh, root, third, root],
-        #         [seventh, root, root, fifth],
-        #     ]
+        # TODO: Alternative doublings
     for doubling in doublings:
-        bassRange = voice_ranges[3]
-        octaveStart = bassRange[0].octave
-        octaveEnd = bassRange[1].octave
+        minBassPitch, maxBassPitch = voice_ranges[3]
+        octaveStart = minBassPitch.octave
+        octaveEnd = maxBassPitch.octave
         for octave in range(octaveStart, octaveEnd + 1):
-            noteName = doubling[0]
-            pitch = Pitch(noteName, octave=octave)
-            if bassRange[0] <= pitch <= bassRange[1]:
-                return list(_voice(2, [pitch], doubling[1:]))
+            bassPitchName = doubling[0]
+            bassPitch = Pitch(bassPitchName, octave=octave)
+            if minBassPitch <= bassPitch <= maxBassPitch:
+                yield from _voice(2, [bassPitch], doubling[1:])
 
 
 @lru_cache(maxsize=None)
 def progressionCost(key, pitches1, pitches2):
     """An alternative algorithm for computing the cost"""
-    chord1 = Chord(pitches1)
-    chord2 = Chord(pitches2)
+    chord1 = getChordFromPitches(pitches1)
+    chord2 = getChordFromPitches(pitches2)
     idString = f"{key.tonicPitchNameWithCase}:"
     for i in range(4):
         idString += f" {chord1[i].pitch.nameWithOctave}{chord2[i].pitch.nameWithOctave}"
@@ -135,23 +143,15 @@ def progressionCost(key, pitches1, pitches2):
     BAD = 4
     MAYBEBAD = 2
     NOTIDEAL = 1
-    horizontalIntervals = [Interval(chord1[i], chord2[i]) for i in range(4)]
-    verticalIntervals1 = [
-        Interval(chord1[i], chord1[j])
-        for i in range(3)
-        for j in range(i + 1, 4)
-    ]
-    verticalIntervals2 = [
-        Interval(chord2[i], chord2[j])
-        for i in range(3)
-        for j in range(i + 1, 4)
-    ]
+    horizontalIntervals = [getInterval(chord1[i].pitch, chord2[i].pitch) for i in range(4)]
+    verticalIntervals1 = getVerticalIntervalsFromPitches(chord1.pitches)
+    verticalIntervals2 = getVerticalIntervalsFromPitches(chord2.pitches)
 
     cost = 0
     penalizations = []
 
     # No duplicate chords
-    if chord1.notes == chord2.notes:
+    if pitches1 == pitches2:
         cost += VERYBAD
         penalizations.append("IDENTICAL_VOICING")
 
@@ -194,13 +194,13 @@ def progressionCost(key, pitches1, pitches2):
         # Unison arrival
         if (
             i2j2.name == "P1"
-            and Interval(i1j1.noteStart, i2j2.noteStart).generic.directed != 2
-            and Interval(i1j1.noteEnd, i2j2.noteStart).generic.directed != -2
+            and getInterval(i1j1.noteStart.pitch, i2j2.noteStart.pitch).generic.directed != 2
+            and getInterval(i1j1.noteEnd.pitch, i2j2.noteStart.pitch).generic.directed != -2
         ):
             cost += VERYBAD
             penalizations.append("UNISON_BY_LEAP")
         # Oblique motion is fine
-        elif i1j1.noteStart == i2j2.noteStart or i1j1.noteEnd == i2j2.noteEnd:
+        elif i1j1.noteStart.pitch == i2j2.noteStart.pitch or i1j1.noteEnd.pitch == i2j2.noteEnd.pitch:
             continue
         # Parallel fifths
         if i1j1.generic.mod7 == 5 and i2j2.generic.mod7 == 5:
@@ -260,7 +260,7 @@ def progressionCost(key, pitches1, pitches2):
             penalizations.append("SEVENTH_UNRESOLVED")
 
     # Leading tone resolution
-    leadingTone = key.getLeadingTone().name
+    leadingTone = getLeadingTone(key).name
     root1 = chord1.root().name
     root2 = chord2.root().name
     if root1 == key.pitchFromDegree(5).name or root1 == leadingTone:
@@ -282,7 +282,8 @@ def progressionCost(key, pitches1, pitches2):
     return cost
 
 
-def chordCost(key, chord):
+@lru_cache(maxsize=None)
+def chordCost(pitches):
     """Computes elements of cost that only pertain to a single chord."""
     FORBIDDEN = 64
     VERYBAD = 8
@@ -290,16 +291,11 @@ def chordCost(key, chord):
     MAYBEBAD = 2
     NOTIDEAL = 1
 
-    idString = f"{key.tonicPitchNameWithCase}:"
-    for i in range(4):
-        idString += f" {chord[i].pitch.nameWithOctave}"
-    if idString == "B-: B-3B-2 B-3B-3 B-3D4 D4F4":
-        kp = 1
-    logging.info(idString)
+    chord = getChordFromPitches(pitches)
 
     cost = 0
     penalizations = []
-    if chord.isTriad():
+    if isTriad(frozenset(chord.pitchNames)):
         if chord.inversion() < 2:
             # In root postion and first inversion, double the root
             if chord.pitchNames.count(chord.root().name) <= 1:
@@ -329,24 +325,22 @@ def voiceProgression(romanNumerals):
     keys = [rn.secondaryRomanNumeralKey or rn.key for rn in romanNumerals]
     dp = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
-        key = keys[i]
-        voicings = voiceChord(key, numeral.figure)
+        pitches = tuple([p.nameWithOctave for p in numeral.pitches])
+        voicings = voiceChord(pitches)
         if i == 0:
             for v in voicings:
-                dp[0][v.pitches] = (chordCost(key, v), None)
+                dp[0][v] = (chordCost(v), None)
         else:
             for v in voicings:
                 best = (float("inf"), None)
                 for pv_pitches, (pcost, _) in dp[i - 1].items():
-                    pv = Chord(pv_pitches)
                     pvkey = keys[i - 1]
-                    # pvkey = keys[0]
                     ccost = pcost + progressionCost(
-                        pvkey, pv.pitches, v.pitches
+                        pvkey, pv_pitches, v
                     )
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
-                dp[i][v.pitches] = (best[0] + chordCost(key, v), best[1])
+                dp[i][v] = (best[0] + chordCost(v), best[1])
 
     cur, (totalCost, _) = min(dp[-1].items(), key=lambda p: p[1][0])
     ret = []
