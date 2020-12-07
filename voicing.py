@@ -252,10 +252,10 @@ def progressionCost(key, pitches1, pitches2):
     # Voice crossing
     for i in range(3):
         if (
-            horizontalIntervals[i].noteEnd
-            > horizontalIntervals[i + 1].noteStart
-            or horizontalIntervals[i + 1].noteEnd
-            < horizontalIntervals[i].noteStart
+            horizontalIntervals[i].noteEnd.pitch
+            > horizontalIntervals[i + 1].noteStart.pitch
+            or horizontalIntervals[i + 1].noteEnd.pitch
+            < horizontalIntervals[i].noteStart.pitch
         ):
             cost += BAD
             penalizations.append("VOICE_CROSSING")
