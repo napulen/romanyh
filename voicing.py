@@ -118,8 +118,7 @@ def _voice(part, voicingSoFar, remainingNotes):
 def _voiceChord(pitches):
     chord = getChordFromPitches(pitches)
     pitchNames = list(chord.pitchNames)
-    # if isTriad(frozenset(chord.pitchNames)):
-    if isTriad(pitches):
+    if isTriad(frozenset(chord.pitchNames)):
         if chord.inversion() != 2:
             doublings = [
                 pitchNames + [chord.root().name],
@@ -314,8 +313,7 @@ def chordCost(pitches):
 
     cost = 0
     penalizations = []
-    # if isTriad(frozenset(chord.pitchNames)):
-    if isTriad(pitches):
+    if isTriad(frozenset(chord.pitchNames)):
         if chord.inversion() < 2:
             # In root postion and first inversion, double the root
             if chord.pitchNames.count(chord.root().name) <= 1:
@@ -355,7 +353,6 @@ def voiceProgression(romanNumerals):
                     )
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
-                cost = chordCost(v)
                 dp[i][v] = (best[0] + chordCost(v), best[1])
 
     cur, (totalCost, _) = min(dp[-1].items(), key=lambda p: p[1][0])
