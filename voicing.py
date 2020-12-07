@@ -1,6 +1,5 @@
 import copy
 import argparse
-import logging
 import itertools
 from fractions import Fraction
 from functools import lru_cache
@@ -20,7 +19,6 @@ from music21.interval import Interval
 
 from unconventional_chords import unconventional_chords
 
-logging.basicConfig(filename="romanyh.log", filemode="w", level=logging.DEBUG)
 voice_ranges = (
     (Pitch("C4"), Pitch("G5")),  # Soprano
     (Pitch("G3"), Pitch("D5")),  # Alto
@@ -28,19 +26,40 @@ voice_ranges = (
     (Pitch("E2"), Pitch("C4")),  # Bass
 )
 
+perfectUnison = Interval('P1')
+
+cachedGetChordFromPitches = []
+cachedGetPitchFromString = []
+cachedGetLeadingTone = []
+cachedGetVerticalIntervalsFromPitches = []
+cachedGetInterval = []
+cachedIsTriad = []
+cachedVoiceChord = []
+cachedProgressionCost = []
+cachedChordCost = []
+
 
 @lru_cache(maxsize=None)
 def getChordFromPitches(pitches):
+    cachedGetChordFromPitches.append(pitches)
     return Chord(pitches)
 
 
 @lru_cache(maxsize=None)
+def getPitchFromString(p):
+    cachedGetPitchFromString.append(p)
+    return Pitch(p)
+
+
+@lru_cache(maxsize=None)
 def getLeadingTone(key):
+    cachedGetLeadingTone.append(key)
     return key.getLeadingTone()
 
 
 @lru_cache(maxsize=None)
 def getVerticalIntervalsFromPitches(pitches):
+    cachedGetVerticalIntervalsFromPitches.append(pitches)
     return [
         getInterval(pitches[i], pitches[j])
         for i in range(3)
@@ -50,11 +69,15 @@ def getVerticalIntervalsFromPitches(pitches):
 
 @lru_cache(maxsize=None)
 def getInterval(p1, p2):
-    return Interval(p1, p2)
+    cachedGetInterval.append((p1, p2))
+    pitch1 = getPitchFromString(p1)
+    pitch2 = getPitchFromString(p2)
+    return Interval(pitch1, pitch2)
 
 
 @lru_cache(maxsize=None)
 def isTriad(pitches):
+    cachedIsTriad.append(pitches)
     return getChordFromPitches(pitches).isTriad()
 
 
@@ -64,11 +87,11 @@ def _voice(part, voicingSoFar, remainingNotes):
         lowerVoice = voicingSoFar[-1]
         octaveStart = max(lowerVoice.octave, minPitch.octave)
         octaveEnd = maxPitch.octave
-        for noteName in set(remainingNotes):
+        for noteName in sorted(set(remainingNotes)):
             newRemaining = remainingNotes.copy()
             newRemaining.remove(noteName)
             for octave in range(octaveStart, octaveEnd + 1):
-                pitch = Pitch(noteName, octave=octave)
+                pitch = getPitchFromString(f'{noteName}{octave}')
                 if (
                     pitch < lowerVoice
                     or pitch < minPitch
@@ -80,10 +103,10 @@ def _voice(part, voicingSoFar, remainingNotes):
                 )
     else:
         # Time to break the recursion
-        pitches = tuple([Pitch(n) for n in voicingSoFar])
-        intervals = [getInterval(pitches[i], pitches[i + 1]) for i in range(3)]
+        pitches = tuple([getPitchFromString(n) for n in voicingSoFar])
+        intervals = [getInterval(pitches[i].nameWithOctave, pitches[i + 1].nameWithOctave) for i in range(3)]
         if (
-            intervals.count(Interval("P1")) <= 1
+            intervals.count(perfectUnison) <= 1
             and 1 <= intervals[1].generic.directed <= 8
             and 1 <= intervals[2].generic.directed <= 8
             # and 1 <= tenorSoprano.generic.directed <= 8
@@ -92,15 +115,11 @@ def _voice(part, voicingSoFar, remainingNotes):
         return
 
 
-@lru_cache(maxsize=None)
-def voiceChord(pitches):
-    return [v for v in _voiceChord(pitches)]
-
-
 def _voiceChord(pitches):
     chord = getChordFromPitches(pitches)
     pitchNames = list(chord.pitchNames)
-    if isTriad(frozenset(chord.pitchNames)):
+    # if isTriad(frozenset(chord.pitchNames)):
+    if isTriad(pitches):
         if chord.inversion() != 2:
             doublings = [
                 pitchNames + [chord.root().name],
@@ -122,30 +141,31 @@ def _voiceChord(pitches):
         octaveEnd = maxBassPitch.octave
         for octave in range(octaveStart, octaveEnd + 1):
             bassPitchName = doubling[0]
-            bassPitch = Pitch(bassPitchName, octave=octave)
+            bassPitch = getPitchFromString(f"{bassPitchName}{octave}")
             if minBassPitch <= bassPitch <= maxBassPitch:
                 yield from _voice(2, [bassPitch], doubling[1:])
 
 
 @lru_cache(maxsize=None)
+def voiceChord(pitches):
+    cachedVoiceChord.append(pitches)
+    return [v for v in _voiceChord(pitches)]
+
+
+@lru_cache(maxsize=None)
 def progressionCost(key, pitches1, pitches2):
     """An alternative algorithm for computing the cost"""
+    cachedProgressionCost.append((key, pitches1, pitches2))
     chord1 = getChordFromPitches(pitches1)
     chord2 = getChordFromPitches(pitches2)
-    idString = f"{key.tonicPitchNameWithCase}:"
-    for i in range(4):
-        idString += f" {chord1[i].pitch.nameWithOctave}{chord2[i].pitch.nameWithOctave}"
-    if idString == "B-: B-3B-2 B-3B-3 B-3D4 D4F4":
-        kp = 1
-    logging.info(idString)
     FORBIDDEN = 64
     VERYBAD = 8
     BAD = 4
     MAYBEBAD = 2
     NOTIDEAL = 1
-    horizontalIntervals = [getInterval(chord1[i].pitch, chord2[i].pitch) for i in range(4)]
-    verticalIntervals1 = getVerticalIntervalsFromPitches(chord1.pitches)
-    verticalIntervals2 = getVerticalIntervalsFromPitches(chord2.pitches)
+    horizontalIntervals = [getInterval(chord1[i].pitch.nameWithOctave, chord2[i].pitch.nameWithOctave) for i in range(4)]
+    verticalIntervals1 = getVerticalIntervalsFromPitches(tuple([p.nameWithOctave for p in chord1.pitches]))
+    verticalIntervals2 = getVerticalIntervalsFromPitches(tuple([p.nameWithOctave for p in chord2.pitches]))
 
     cost = 0
     penalizations = []
@@ -162,6 +182,7 @@ def progressionCost(key, pitches1, pitches2):
         == horizontalIntervals[2].direction
         == horizontalIntervals[3].direction
     ):
+
         cost += FORBIDDEN
         penalizations.append("ALLVOICES_SAME_DIRECTION")
 
@@ -194,8 +215,8 @@ def progressionCost(key, pitches1, pitches2):
         # Unison arrival
         if (
             i2j2.name == "P1"
-            and getInterval(i1j1.noteStart.pitch, i2j2.noteStart.pitch).generic.directed != 2
-            and getInterval(i1j1.noteEnd.pitch, i2j2.noteStart.pitch).generic.directed != -2
+            and getInterval(i1j1.noteStart.pitch.nameWithOctave, i2j2.noteStart.pitch.nameWithOctave).generic.directed != 2
+            and getInterval(i1j1.noteEnd.pitch.nameWithOctave, i2j2.noteStart.pitch.nameWithOctave).generic.directed != -2
         ):
             cost += VERYBAD
             penalizations.append("UNISON_BY_LEAP")
@@ -276,15 +297,13 @@ def progressionCost(key, pitches1, pitches2):
                     cost += VERYBAD
                     penalizations.append("LEADINGTONE_UNRESOLVED")
 
-    logging.info(cost)
-    for rule in penalizations:
-        logging.warning(rule)
     return cost
 
 
 @lru_cache(maxsize=None)
 def chordCost(pitches):
     """Computes elements of cost that only pertain to a single chord."""
+    cachedChordCost.append(pitches)
     FORBIDDEN = 64
     VERYBAD = 8
     BAD = 4
@@ -295,7 +314,8 @@ def chordCost(pitches):
 
     cost = 0
     penalizations = []
-    if isTriad(frozenset(chord.pitchNames)):
+    # if isTriad(frozenset(chord.pitchNames)):
+    if isTriad(pitches):
         if chord.inversion() < 2:
             # In root postion and first inversion, double the root
             if chord.pitchNames.count(chord.root().name) <= 1:
@@ -306,11 +326,6 @@ def chordCost(pitches):
         if set(chord.pitchNames) != 4:
             cost += MAYBEBAD
             penalizations.append("VERTICAL_SEVENTH_MISSINGNOTE")
-
-    logging.info(cost)
-    for rule in penalizations:
-        logging.warning(rule)
-
     return cost
 
 
@@ -340,6 +355,7 @@ def voiceProgression(romanNumerals):
                     )
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
+                cost = chordCost(v)
                 dp[i][v] = (best[0] + chordCost(v), best[1])
 
     cur, (totalCost, _) = min(dp[-1].items(), key=lambda p: p[1][0])
