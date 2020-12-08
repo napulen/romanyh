@@ -29,6 +29,7 @@ voice_ranges = (
 perfectUnison = Interval("P1")
 
 cachedGetChordFromPitches = []
+cachedGetKeyFromString = []
 cachedGetPitchFromString = []
 cachedGetLeadingTone = []
 cachedGetVerticalIntervalsFromPitches = []
@@ -46,6 +47,12 @@ def getChordFromPitches(pitches):
 
 
 @lru_cache(maxsize=None)
+def getKeyFromString(key):
+    cachedGetKeyFromString.append(key)
+    return Key(key)
+
+
+@lru_cache(maxsize=None)
 def getPitchFromString(p):
     cachedGetPitchFromString.append(p)
     return Pitch(p)
@@ -54,16 +61,14 @@ def getPitchFromString(p):
 @lru_cache(maxsize=None)
 def getLeadingTone(key):
     cachedGetLeadingTone.append(key)
-    return key.getLeadingTone()
+    return getKeyFromString(key).getLeadingTone()
 
 
 @lru_cache(maxsize=None)
 def getVerticalIntervalsFromPitches(pitches):
     cachedGetVerticalIntervalsFromPitches.append(pitches)
     return [
-        getInterval(pitches[i], pitches[j])
-        for i in range(3)
-        for j in range(i + 1, 4)
+        getInterval(pitches[i], pitches[j]) for i in range(3) for j in range(i + 1, 4)
     ]
 
 
@@ -160,9 +165,7 @@ def progressionCost(key, pitches1, pitches2):
     BAD = 4
     MAYBEBAD = 2
     NOTIDEAL = 1
-    horizontalIntervals = [
-        getInterval(pitches1[i], pitches2[i]) for i in range(4)
-    ]
+    horizontalIntervals = [getInterval(pitches1[i], pitches2[i]) for i in range(4)]
     verticalIntervals1 = getVerticalIntervalsFromPitches(pitches1)
     verticalIntervals2 = getVerticalIntervalsFromPitches(pitches2)
     verticalHorizontalMapping = {
@@ -241,16 +244,14 @@ def progressionCost(key, pitches1, pitches2):
     # Hidden octaves/fifths in extreme voices
     if (
         verticalIntervals2[2].generic.mod7 == 5
-        and horizontalIntervals[0].direction
-        == horizontalIntervals[3].direction
+        and horizontalIntervals[0].direction == horizontalIntervals[3].direction
     ):
         cost += FORBIDDEN
         penalizations.append("HIDDEN_FIFTH")
 
     if (
         verticalIntervals2[2].generic.mod7 == 1
-        and horizontalIntervals[0].direction
-        == horizontalIntervals[3].direction
+        and horizontalIntervals[0].direction == horizontalIntervals[3].direction
     ):
         cost += FORBIDDEN
         penalizations.append("HIDDEN_OCTAVE")
@@ -287,13 +288,12 @@ def progressionCost(key, pitches1, pitches2):
             penalizations.append("SEVENTH_UNRESOLVED")
 
     # Leading tone resolution
+    k = getKeyFromString(key)
     leadingTone = getLeadingTone(key).name
     root1 = chord1.root().name
     root2 = chord2.root().name
-    if root1 == key.pitchFromDegree(5).name or root1 == leadingTone:
-        if root2 == key.pitchFromDegree(
-            1
-        ).name or root2 == key.pitchFromDegree(6):
+    if root1 == k.pitchFromDegree(5).name or root1 == leadingTone:
+        if root2 == k.pitchFromDegree(1).name or root2 == k.pitchFromDegree(6):
             if leadingTone in chord1.pitchNames:
                 leadingToneIndex = chord1.pitchNames.index(leadingTone)
                 if (
@@ -343,6 +343,7 @@ def voiceProgression(romanNumerals):
     numerals in the chord progression.
     """
     keys = [rn.secondaryRomanNumeralKey or rn.key for rn in romanNumerals]
+
     dp = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
         pitches = tuple([p.nameWithOctave for p in numeral.pitches])
@@ -354,7 +355,7 @@ def voiceProgression(romanNumerals):
             for v in voicings:
                 best = (float("inf"), None)
                 for pv_pitches, (pcost, _) in dp[i - 1].items():
-                    pvkey = keys[i - 1]
+                    pvkey = keys[i - 1].tonicPitchNameWithCase
                     ccost = pcost + progressionCost(pvkey, pv_pitches, v)
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
@@ -405,9 +406,7 @@ def voiceLeader(romantext):  # Previously generateChorale
     The input is a stream, parsed from an input RomanText file.
     The chords, time signature and key are all extracted from there.
     """
-    romanNumerals = list(
-        romantext.recurse().getElementsByClass("RomanNumeral")
-    )
+    romanNumerals = list(romantext.recurse().getElementsByClass("RomanNumeral"))
     for rn in romanNumerals:
         keyFigure = (rn.key.mode, rn.figure)
         if keyFigure in unconventional_chords:
