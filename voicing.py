@@ -92,13 +92,13 @@ def _voice(part, voicingSoFar, remainingNotes):
             newRemaining.remove(noteName)
             for octave in range(octaveStart, octaveEnd + 1):
                 pitch = getPitchFromString(f"{noteName}{octave}")
-                if pitch < lowerVoice or pitch < minPitch or pitch > maxPitch:
-                    continue
-                yield from _voice(
-                    part - 1,
-                    voicingSoFar + [pitch.nameWithOctave],
-                    newRemaining,
-                )
+                if max(minPitch, lowerVoice) <= pitch <= maxPitch:
+                    yield from _voice(
+                        part - 1,
+                        voicingSoFar + [pitch.nameWithOctave],
+                        newRemaining,
+                    )
+                continue
     else:
         # Time to break the recursion
         pitches = tuple(voicingSoFar)
@@ -116,7 +116,7 @@ def _voice(part, voicingSoFar, remainingNotes):
 def _voiceChord(pitches):
     chord = getChordFromPitches(pitches)
     pitchNames = list(chord.pitchNames)
-    if isTriad(frozenset(chord.pitchNames)):
+    if isTriad(frozenset(pitchNames)):
         if chord.inversion() != 2:
             doublings = [
                 pitchNames + [chord.root().name],
@@ -161,17 +161,18 @@ def progressionCost(key, pitches1, pitches2):
     MAYBEBAD = 2
     NOTIDEAL = 1
     horizontalIntervals = [
-        getInterval(
-            chord1[i].pitch.nameWithOctave, chord2[i].pitch.nameWithOctave
-        )
-        for i in range(4)
+        getInterval(pitches1[i], pitches2[i]) for i in range(4)
     ]
-    verticalIntervals1 = getVerticalIntervalsFromPitches(
-        tuple([p.nameWithOctave for p in chord1.pitches])
-    )
-    verticalIntervals2 = getVerticalIntervalsFromPitches(
-        tuple([p.nameWithOctave for p in chord2.pitches])
-    )
+    verticalIntervals1 = getVerticalIntervalsFromPitches(pitches1)
+    verticalIntervals2 = getVerticalIntervalsFromPitches(pitches2)
+    verticalHorizontalMapping = {
+        0: (horizontalIntervals[0], horizontalIntervals[1]),
+        1: (horizontalIntervals[0], horizontalIntervals[2]),
+        2: (horizontalIntervals[0], horizontalIntervals[3]),
+        3: (horizontalIntervals[1], horizontalIntervals[2]),
+        4: (horizontalIntervals[1], horizontalIntervals[3]),
+        5: (horizontalIntervals[2], horizontalIntervals[3]),
+    }
 
     cost = 0
     penalizations = []
@@ -216,29 +217,17 @@ def progressionCost(key, pitches1, pitches2):
             cost += NOTIDEAL
             penalizations.append("MELODIC_INTERVAL_BEYONDSECOND")
 
-    # Parallel motion and unison
-    for i1j1, i2j2 in zip(verticalIntervals1, verticalIntervals2):
+    # Parallel motion and unisons
+    for i in range(6):
+        i1j1, i2j2 = verticalIntervals1[i], verticalIntervals2[i]
+        hLower, hUpper = verticalHorizontalMapping[i]
         # Unison arrival
-        if (
-            i2j2.name == "P1"
-            and getInterval(
-                i1j1.noteStart.pitch.nameWithOctave,
-                i2j2.noteStart.pitch.nameWithOctave,
-            ).generic.directed
-            != 2
-            and getInterval(
-                i1j1.noteEnd.pitch.nameWithOctave,
-                i2j2.noteStart.pitch.nameWithOctave,
-            ).generic.directed
-            != -2
-        ):
-            cost += VERYBAD
-            penalizations.append("UNISON_BY_LEAP")
+        if i2j2.name == "P1":
+            if hLower.generic.directed != 2 and hUpper.generic.directed != -2:
+                cost += VERYBAD
+                penalizations.append("UNISON_BY_LEAP")
         # Oblique motion is fine
-        elif (
-            i1j1.noteStart.pitch == i2j2.noteStart.pitch
-            or i1j1.noteEnd.pitch == i2j2.noteEnd.pitch
-        ):
+        elif hLower.name == "P1" or hUpper.name == "P1":
             continue
         # Parallel fifths
         if i1j1.generic.mod7 == 5 and i2j2.generic.mod7 == 5:
