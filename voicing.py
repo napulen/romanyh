@@ -26,7 +26,7 @@ voice_ranges = (
     (Pitch("E2"), Pitch("C4")),  # Bass
 )
 
-perfectUnison = Interval('P1')
+perfectUnison = Interval("P1")
 
 cachedGetChordFromPitches = []
 cachedGetPitchFromString = []
@@ -84,34 +84,32 @@ def isTriad(pitches):
 def _voice(part, voicingSoFar, remainingNotes):
     if part >= 0:
         minPitch, maxPitch = voice_ranges[part]
-        lowerVoice = voicingSoFar[-1]
+        lowerVoice = getPitchFromString(voicingSoFar[-1])
         octaveStart = max(lowerVoice.octave, minPitch.octave)
         octaveEnd = maxPitch.octave
         for noteName in sorted(set(remainingNotes)):
             newRemaining = remainingNotes.copy()
             newRemaining.remove(noteName)
             for octave in range(octaveStart, octaveEnd + 1):
-                pitch = getPitchFromString(f'{noteName}{octave}')
-                if (
-                    pitch < lowerVoice
-                    or pitch < minPitch
-                    or pitch > maxPitch
-                ):
+                pitch = getPitchFromString(f"{noteName}{octave}")
+                if pitch < lowerVoice or pitch < minPitch or pitch > maxPitch:
                     continue
                 yield from _voice(
-                    part - 1, voicingSoFar + [pitch], newRemaining
+                    part - 1,
+                    voicingSoFar + [pitch.nameWithOctave],
+                    newRemaining,
                 )
     else:
         # Time to break the recursion
-        pitches = tuple([getPitchFromString(n) for n in voicingSoFar])
-        intervals = [getInterval(pitches[i].nameWithOctave, pitches[i + 1].nameWithOctave) for i in range(3)]
+        pitches = tuple(voicingSoFar)
+        intervals = [getInterval(pitches[i], pitches[i + 1]) for i in range(3)]
         if (
             intervals.count(perfectUnison) <= 1
             and 1 <= intervals[1].generic.directed <= 8
             and 1 <= intervals[2].generic.directed <= 8
             # and 1 <= tenorSoprano.generic.directed <= 8
         ):
-            yield tuple([p.nameWithOctave for p in pitches])
+            yield pitches
         return
 
 
@@ -142,7 +140,7 @@ def _voiceChord(pitches):
             bassPitchName = doubling[0]
             bassPitch = getPitchFromString(f"{bassPitchName}{octave}")
             if minBassPitch <= bassPitch <= maxBassPitch:
-                yield from _voice(2, [bassPitch], doubling[1:])
+                yield from _voice(2, [bassPitch.nameWithOctave], doubling[1:])
 
 
 @lru_cache(maxsize=None)
@@ -162,9 +160,18 @@ def progressionCost(key, pitches1, pitches2):
     BAD = 4
     MAYBEBAD = 2
     NOTIDEAL = 1
-    horizontalIntervals = [getInterval(chord1[i].pitch.nameWithOctave, chord2[i].pitch.nameWithOctave) for i in range(4)]
-    verticalIntervals1 = getVerticalIntervalsFromPitches(tuple([p.nameWithOctave for p in chord1.pitches]))
-    verticalIntervals2 = getVerticalIntervalsFromPitches(tuple([p.nameWithOctave for p in chord2.pitches]))
+    horizontalIntervals = [
+        getInterval(
+            chord1[i].pitch.nameWithOctave, chord2[i].pitch.nameWithOctave
+        )
+        for i in range(4)
+    ]
+    verticalIntervals1 = getVerticalIntervalsFromPitches(
+        tuple([p.nameWithOctave for p in chord1.pitches])
+    )
+    verticalIntervals2 = getVerticalIntervalsFromPitches(
+        tuple([p.nameWithOctave for p in chord2.pitches])
+    )
 
     cost = 0
     penalizations = []
@@ -214,13 +221,24 @@ def progressionCost(key, pitches1, pitches2):
         # Unison arrival
         if (
             i2j2.name == "P1"
-            and getInterval(i1j1.noteStart.pitch.nameWithOctave, i2j2.noteStart.pitch.nameWithOctave).generic.directed != 2
-            and getInterval(i1j1.noteEnd.pitch.nameWithOctave, i2j2.noteStart.pitch.nameWithOctave).generic.directed != -2
+            and getInterval(
+                i1j1.noteStart.pitch.nameWithOctave,
+                i2j2.noteStart.pitch.nameWithOctave,
+            ).generic.directed
+            != 2
+            and getInterval(
+                i1j1.noteEnd.pitch.nameWithOctave,
+                i2j2.noteStart.pitch.nameWithOctave,
+            ).generic.directed
+            != -2
         ):
             cost += VERYBAD
             penalizations.append("UNISON_BY_LEAP")
         # Oblique motion is fine
-        elif i1j1.noteStart.pitch == i2j2.noteStart.pitch or i1j1.noteEnd.pitch == i2j2.noteEnd.pitch:
+        elif (
+            i1j1.noteStart.pitch == i2j2.noteStart.pitch
+            or i1j1.noteEnd.pitch == i2j2.noteEnd.pitch
+        ):
             continue
         # Parallel fifths
         if i1j1.generic.mod7 == 5 and i2j2.generic.mod7 == 5:
@@ -348,9 +366,7 @@ def voiceProgression(romanNumerals):
                 best = (float("inf"), None)
                 for pv_pitches, (pcost, _) in dp[i - 1].items():
                     pvkey = keys[i - 1]
-                    ccost = pcost + progressionCost(
-                        pvkey, pv_pitches, v
-                    )
+                    ccost = pcost + progressionCost(pvkey, pv_pitches, v)
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
                 dp[i][v] = (best[0] + chordCost(v), best[1])
