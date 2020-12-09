@@ -3,6 +3,7 @@ import argparse
 import itertools
 from fractions import Fraction
 from functools import lru_cache
+from enum import IntEnum
 
 from music21.layout import StaffGroup
 from music21.converter import parse
@@ -19,12 +20,48 @@ from music21.interval import Interval
 
 from unconventional_chords import unconventional_chords
 
-voice_ranges = (
-    (Pitch("C4"), Pitch("G5")),  # Soprano
-    (Pitch("G3"), Pitch("D5")),  # Alto
-    (Pitch("C3"), Pitch("G4")),  # Tenor
-    (Pitch("E2"), Pitch("C4")),  # Bass
-)
+
+class PartEnum(IntEnum):
+    SOPRANO = 3
+    ALTO = 2
+    TENOR = 1
+    BASS = 0
+
+
+class IntervalV(IntEnum):
+    ALTO_SOPRANO = 5
+    TENOR_SOPRANO = 4
+    TENOR_ALTO = 3
+    BASS_SOPRANO = 2
+    BASS_ALTO = 1
+    BASS_TENOR = 0
+
+
+class Cost(IntEnum):
+    FORBIDDEN = 64
+    VERYBAD = 8
+    BAD = 4
+    MAYBEBAD = 2
+    NOTIDEAL = 1
+
+
+voice_ranges = {
+    PartEnum.SOPRANO: (Pitch("C4"), Pitch("G5")),
+    PartEnum.ALTO: (Pitch("G3"), Pitch("D5")),
+    PartEnum.TENOR: (Pitch("C3"), Pitch("G4")),
+    PartEnum.BASS: (Pitch("E2"), Pitch("C4")),
+}
+
+
+verticalHorizontalMapping = {
+    IntervalV.ALTO_SOPRANO: (PartEnum.SOPRANO, PartEnum.ALTO),
+    IntervalV.TENOR_SOPRANO: (PartEnum.TENOR, PartEnum.SOPRANO),
+    IntervalV.TENOR_ALTO: (PartEnum.TENOR, PartEnum.ALTO),
+    IntervalV.BASS_SOPRANO: (PartEnum.BASS, PartEnum.SOPRANO),
+    IntervalV.BASS_ALTO: (PartEnum.BASS, PartEnum.ALTO),
+    IntervalV.BASS_TENOR: (PartEnum.BASS, PartEnum.TENOR),
+}
+
 
 perfectUnison = Interval("P1")
 
@@ -68,7 +105,9 @@ def getLeadingTone(key):
 def getVerticalIntervalsFromPitches(pitches):
     cachedGetVerticalIntervalsFromPitches.append(pitches)
     return [
-        getInterval(pitches[i], pitches[j]) for i in range(3) for j in range(i + 1, 4)
+        getInterval(pitches[i], pitches[j])
+        for i in range(3)
+        for j in range(i + 1, 4)
     ]
 
 
@@ -87,24 +126,7 @@ def isTriad(pitches):
 
 
 def _voice(part, voicingSoFar, remainingNotes):
-    if part >= 0:
-        minPitch, maxPitch = voice_ranges[part]
-        lowerVoice = getPitchFromString(voicingSoFar[-1])
-        octaveStart = max(lowerVoice.octave, minPitch.octave)
-        octaveEnd = maxPitch.octave
-        for noteName in sorted(set(remainingNotes)):
-            newRemaining = remainingNotes.copy()
-            newRemaining.remove(noteName)
-            for octave in range(octaveStart, octaveEnd + 1):
-                pitch = getPitchFromString(f"{noteName}{octave}")
-                if max(minPitch, lowerVoice) <= pitch <= maxPitch:
-                    yield from _voice(
-                        part - 1,
-                        voicingSoFar + [pitch.nameWithOctave],
-                        newRemaining,
-                    )
-                continue
-    else:
+    if not remainingNotes:
         # Time to break the recursion
         pitches = tuple(voicingSoFar)
         intervals = [getInterval(pitches[i], pitches[i + 1]) for i in range(3)]
@@ -116,6 +138,24 @@ def _voice(part, voicingSoFar, remainingNotes):
         ):
             yield pitches
         return
+    # Keep recursing
+    minPitch, maxPitch = voice_ranges[part]
+    if voicingSoFar:
+        minPitch = max(minPitch, getPitchFromString(voicingSoFar[-1]))
+    octaveStart = minPitch.octave
+    octaveEnd = maxPitch.octave
+    for noteName in sorted(set(remainingNotes)):
+        newRemaining = remainingNotes.copy()
+        newRemaining.remove(noteName)
+        for octave in range(octaveStart, octaveEnd + 1):
+            pitchName = f"{noteName}{octave}"
+            pitch = getPitchFromString(pitchName)
+            if minPitch <= pitch <= maxPitch:
+                yield from _voice(
+                    part + 1,
+                    voicingSoFar + [pitchName],
+                    newRemaining,
+                )
 
 
 def _voiceChord(pitches):
@@ -138,14 +178,16 @@ def _voiceChord(pitches):
         doublings = [pitchNames]
         # TODO: Alternative doublings
     for doubling in doublings:
-        minBassPitch, maxBassPitch = voice_ranges[3]
+        minBassPitch, maxBassPitch = voice_ranges[PartEnum.BASS]
         octaveStart = minBassPitch.octave
         octaveEnd = maxBassPitch.octave
         for octave in range(octaveStart, octaveEnd + 1):
-            bassPitchName = doubling[0]
-            bassPitch = getPitchFromString(f"{bassPitchName}{octave}")
+            bassPitchName = doubling[PartEnum.BASS] + str(octave)
+            bassPitch = getPitchFromString(bassPitchName)
             if minBassPitch <= bassPitch <= maxBassPitch:
-                yield from _voice(2, [bassPitch.nameWithOctave], doubling[1:])
+                yield from _voice(
+                    PartEnum.TENOR, [bassPitchName], doubling[1:]
+                )
 
 
 @lru_cache(maxsize=None)
@@ -160,29 +202,18 @@ def progressionCost(key, pitches1, pitches2):
     cachedProgressionCost.append((key, pitches1, pitches2))
     chord1 = getChordFromPitches(pitches1)
     chord2 = getChordFromPitches(pitches2)
-    FORBIDDEN = 64
-    VERYBAD = 8
-    BAD = 4
-    MAYBEBAD = 2
-    NOTIDEAL = 1
-    horizontalIntervals = [getInterval(pitches1[i], pitches2[i]) for i in range(4)]
+    horizontalIntervals = [
+        getInterval(pitches1[i], pitches2[i]) for i in range(4)
+    ]
     verticalIntervals1 = getVerticalIntervalsFromPitches(pitches1)
     verticalIntervals2 = getVerticalIntervalsFromPitches(pitches2)
-    verticalHorizontalMapping = {
-        0: (horizontalIntervals[0], horizontalIntervals[1]),
-        1: (horizontalIntervals[0], horizontalIntervals[2]),
-        2: (horizontalIntervals[0], horizontalIntervals[3]),
-        3: (horizontalIntervals[1], horizontalIntervals[2]),
-        4: (horizontalIntervals[1], horizontalIntervals[3]),
-        5: (horizontalIntervals[2], horizontalIntervals[3]),
-    }
 
     cost = 0
     penalizations = []
 
     # No duplicate chords
     if pitches1 == pitches2:
-        cost += VERYBAD
+        cost += Cost.VERYBAD
         penalizations.append("IDENTICAL_VOICING")
 
     # All voices in the same direction
@@ -193,7 +224,7 @@ def progressionCost(key, pitches1, pitches2):
         == horizontalIntervals[3].direction
     ):
 
-        cost += FORBIDDEN
+        cost += Cost.FORBIDDEN
         penalizations.append("ALLVOICES_SAME_DIRECTION")
 
     # Melodic intervals for individual voices
@@ -205,55 +236,59 @@ def progressionCost(key, pitches1, pitches2):
             or n1n2.simpleName == "m7"
             or n1n2.simpleName == "M7"
         ):
-            cost += FORBIDDEN
+            cost += Cost.FORBIDDEN
             penalizations.append("MELODIC_INTERVAL_FORBIDDEN")
         elif abs(n1n2.semitones) > 12:
-            cost += VERYBAD
+            cost += Cost.VERYBAD
             penalizations.append("MELODIC_INTERVAL_BEYONDOCTAVE")
         elif abs(n1n2.semitones) > 7:
-            cost += BAD
+            cost += Cost.BAD
             penalizations.append("MELODIC_INTERVAL_BEYONDFIFTH")
         elif abs(n1n2.semitones) > 4:
-            cost += MAYBEBAD
+            cost += Cost.MAYBEBAD
             penalizations.append("MELODIC_INTERVAL_BEYONDTHIRD")
         elif abs(n1n2.semitones) > 2:
-            cost += NOTIDEAL
+            cost += Cost.NOTIDEAL
             penalizations.append("MELODIC_INTERVAL_BEYONDSECOND")
 
     # Parallel motion and unisons
     for i in range(6):
         i1j1, i2j2 = verticalIntervals1[i], verticalIntervals2[i]
-        hLower, hUpper = verticalHorizontalMapping[i]
+        hLowerIndex, hUpperIndex = verticalHorizontalMapping[i]
+        hLower = horizontalIntervals[hLowerIndex]
+        hUpper = horizontalIntervals[hUpperIndex]
         # Unison arrival
         if i2j2.name == "P1":
             if hLower.generic.directed != 2 and hUpper.generic.directed != -2:
-                cost += VERYBAD
+                cost += Cost.VERYBAD
                 penalizations.append("UNISON_BY_LEAP")
         # Oblique motion is fine
         elif hLower.name == "P1" or hUpper.name == "P1":
             continue
         # Parallel fifths
         if i1j1.generic.mod7 == 5 and i2j2.generic.mod7 == 5:
-            cost += FORBIDDEN
+            cost += Cost.FORBIDDEN
             penalizations.append("PARALLEL_FIFTH")
         # Parallel octave/unison
         elif i1j1.generic.mod7 == 1 and i2j2.generic.mod7 == 1:
-            cost += FORBIDDEN
+            cost += Cost.FORBIDDEN
             penalizations.append("PARALLEL_OCTAVE")
 
     # Hidden octaves/fifths in extreme voices
     if (
         verticalIntervals2[2].generic.mod7 == 5
-        and horizontalIntervals[0].direction == horizontalIntervals[3].direction
+        and horizontalIntervals[0].direction
+        == horizontalIntervals[3].direction
     ):
-        cost += FORBIDDEN
+        cost += Cost.FORBIDDEN
         penalizations.append("HIDDEN_FIFTH")
 
     if (
         verticalIntervals2[2].generic.mod7 == 1
-        and horizontalIntervals[0].direction == horizontalIntervals[3].direction
+        and horizontalIntervals[0].direction
+        == horizontalIntervals[3].direction
     ):
-        cost += FORBIDDEN
+        cost += Cost.FORBIDDEN
         penalizations.append("HIDDEN_OCTAVE")
 
     # Voice crossing
@@ -264,7 +299,7 @@ def progressionCost(key, pitches1, pitches2):
             or horizontalIntervals[i + 1].noteEnd.pitch
             < horizontalIntervals[i].noteStart.pitch
         ):
-            cost += BAD
+            cost += Cost.BAD
             penalizations.append("VOICE_CROSSING")
 
     # Sevenths preparation
@@ -274,7 +309,7 @@ def progressionCost(key, pitches1, pitches2):
             horizontalIntervals[seventhIndex].generic.directed != 1
             and horizontalIntervals[seventhIndex].generic.undirected != 2
         ):
-            cost += BAD
+            cost += Cost.BAD
             penalizations.append("SEVENTH_UNPREPARED")
 
     # Sevenths resolution
@@ -284,7 +319,7 @@ def progressionCost(key, pitches1, pitches2):
             horizontalIntervals[seventhIndex].generic.directed != 1
             and horizontalIntervals[seventhIndex].generic.directed != -2
         ):
-            cost += VERYBAD
+            cost += Cost.VERYBAD
             penalizations.append("SEVENTH_UNRESOLVED")
 
     # Leading tone resolution
@@ -300,7 +335,7 @@ def progressionCost(key, pitches1, pitches2):
                     horizontalIntervals[leadingToneIndex].name != "m2"
                     and horizontalIntervals[leadingToneIndex].name != "M-3"
                 ):
-                    cost += VERYBAD
+                    cost += Cost.VERYBAD
                     penalizations.append("LEADINGTONE_UNRESOLVED")
 
     return cost
@@ -310,26 +345,19 @@ def progressionCost(key, pitches1, pitches2):
 def chordCost(pitches):
     """Computes elements of cost that only pertain to a single chord."""
     cachedChordCost.append(pitches)
-    FORBIDDEN = 64
-    VERYBAD = 8
-    BAD = 4
-    MAYBEBAD = 2
-    NOTIDEAL = 1
-
     chord = getChordFromPitches(pitches)
-
     cost = 0
     penalizations = []
     if isTriad(frozenset(chord.pitchNames)):
         if chord.inversion() < 2:
             # In root postion and first inversion, double the root
             if chord.pitchNames.count(chord.root().name) <= 1:
-                cost += NOTIDEAL
+                cost += Cost.NOTIDEAL
                 penalizations.append("VERTICAL_NOT_DOUBLINGROOT")
     elif chord.isSeventh():
         # In seventh chords, prefer to play all the notes
         if set(chord.pitchNames) != 4:
-            cost += MAYBEBAD
+            cost += Cost.MAYBEBAD
             penalizations.append("VERTICAL_SEVENTH_MISSINGNOTE")
     return cost
 
@@ -406,7 +434,9 @@ def voiceLeader(romantext):  # Previously generateChorale
     The input is a stream, parsed from an input RomanText file.
     The chords, time signature and key are all extracted from there.
     """
-    romanNumerals = list(romantext.recurse().getElementsByClass("RomanNumeral"))
+    romanNumerals = list(
+        romantext.recurse().getElementsByClass("RomanNumeral")
+    )
     for rn in romanNumerals:
         keyFigure = (rn.key.mode, rn.figure)
         if keyFigure in unconventional_chords:
