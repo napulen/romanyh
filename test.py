@@ -23,7 +23,7 @@ trivial = """
 Composer: Néstor Nápoles López
 Title: Changing keys
 
-Time signature: 4/4 
+Time signature: 4/4
 
 m1 b1 C: I b2 I
 m2 I b2 I
@@ -45,7 +45,7 @@ changingKeys = """
 Composer: Néstor Nápoles López
 Title: Changing keys
 
-Time signature: 3/4 
+Time signature: 3/4
 
 m1 b1 C: I c: b3 I
 m2 C: V c: b3 V
