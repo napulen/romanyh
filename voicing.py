@@ -64,7 +64,7 @@ class Rule(IntEnum):
 _ruleCostMapping = {
     # progression rules
     Rule.IDENTICAL_VOICING: Cost.VERYBAD,
-    Rule.ALLVOICES_SAME_DIRECTION: Cost.FORBIDDEN,
+    Rule.ALLVOICES_SAME_DIRECTION: Cost.VERYBAD,
     Rule.MELODIC_INTERVAL_FORBIDDEN: Cost.FORBIDDEN,
     Rule.MELODIC_INTERVAL_BEYONDOCTAVE: Cost.VERYBAD,
     Rule.MELODIC_INTERVAL_BEYONDFIFTH: Cost.BAD,
@@ -256,9 +256,8 @@ def progressionCost(key, pitches1, pitches2):
     # No duplicate chords
     if pitches1 == pitches2:
         cost += applyRule(Rule.IDENTICAL_VOICING)
-
     # All voices in the same direction
-    if (
+    elif (
         horizontalIntervals[PartEnum.BASS].direction
         == horizontalIntervals[PartEnum.TENOR].direction
         == horizontalIntervals[PartEnum.ALTO].direction
@@ -308,6 +307,8 @@ def progressionCost(key, pitches1, pitches2):
     # Hidden octaves/fifths in extreme voices
     if (
         verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 5
+        and horizontalIntervals[PartEnum.BASS] != perfectUnison
+        and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
         and horizontalIntervals[PartEnum.BASS].direction
         == horizontalIntervals[PartEnum.SOPRANO].direction
     ):
@@ -315,6 +316,8 @@ def progressionCost(key, pitches1, pitches2):
 
     if (
         verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 1
+        and horizontalIntervals[PartEnum.BASS] != perfectUnison
+        and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
         and horizontalIntervals[PartEnum.BASS].direction
         == horizontalIntervals[PartEnum.SOPRANO].direction
     ):
@@ -354,12 +357,13 @@ def progressionCost(key, pitches1, pitches2):
     root1 = chord1.root().name
     root2 = chord2.root().name
     if root1 == k.pitchFromDegree(5).name or root1 == leadingTone:
-        if root2 == k.pitchFromDegree(1).name or root2 == k.pitchFromDegree(6):
+        if root2 == k.tonic.name or root2 == k.pitchFromDegree(6):
             if leadingTone in chord1.pitchNames:
                 leadingToneIndex = chord1.pitchNames.index(leadingTone)
                 if (
-                    horizontalIntervals[leadingToneIndex].name != "m2"
-                    and horizontalIntervals[leadingToneIndex].name != "M-3"
+                    horizontalIntervals[leadingToneIndex].directedName != "m2"
+                    and horizontalIntervals[leadingToneIndex].directedName
+                    != "M-3"
                 ):
                     cost += applyRule(Rule.LEADINGTONE_UNRESOLVED)
 
@@ -377,7 +381,7 @@ def chordCost(pitches):
             # In root postion and first inversion, double the root
             if chord.pitchNames.count(chord.root().name) <= 1:
                 cost += applyRule(Rule.VERTICAL_NOT_DOUBLINGROOT)
-    elif chord.isSeventh():
+    elif chord.seventh:
         # In seventh chords, prefer to play all the notes
         if set(chord.pitchNames) != 4:
             cost += applyRule(Rule.VERTICAL_SEVENTH_MISSINGNOTE)
