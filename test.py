@@ -1,11 +1,24 @@
 import unittest
+
 from music21.chord import Chord
 from music21.pitch import Pitch
 from music21.roman import RomanNumeral
-from music21.converter import parse
+from music21.converter import parseData as m21ParseData
 
-from voicing import Cost
-import voicing
+from voicing import Cost, Rule
+from voicing import voiceProgression
+from voicing import applyRule
+from voicing import getChordFromPitches
+from voicing import getKeyFromString
+from voicing import getPitchFromString
+from voicing import getLeadingTone
+from voicing import getVerticalIntervalsFromPitches
+from voicing import getInterval
+from voicing import isTriad
+from voicing import voiceChord
+from voicing import progressionCost
+from voicing import chordCost
+
 
 trivial = """
 Composer: Néstor Nápoles López
@@ -42,62 +55,69 @@ m3 C: I c: b3 I
 
 
 def cleanupCache():
-    voicing.getChordFromPitches.cache_clear()
-    voicing.getKeyFromString.cache_clear()
-    voicing.getPitchFromString.cache_clear()
-    voicing.getLeadingTone.cache_clear()
-    voicing.getVerticalIntervalsFromPitches.cache_clear()
-    voicing.getInterval.cache_clear()
-    voicing.isTriad.cache_clear()
-    voicing.voiceChord.cache_clear()
-    voicing.progressionCost.cache_clear()
-    voicing.chordCost.cache_clear()
+    getChordFromPitches.cache_clear()
+    getKeyFromString.cache_clear()
+    getPitchFromString.cache_clear()
+    getLeadingTone.cache_clear()
+    getVerticalIntervalsFromPitches.cache_clear()
+    getInterval.cache_clear()
+    isTriad.cache_clear()
+    voiceChord.cache_clear()
+    progressionCost.cache_clear()
+    chordCost.cache_clear()
 
 
 def getCaches():
     return (
-        ("getChordFromPitches", voicing.getChordFromPitches.cache_info()),
-        ("getKeyFromString", voicing.getKeyFromString.cache_info()),
-        ("getPitchFromString", voicing.getPitchFromString.cache_info()),
-        ("getLeadingTone", voicing.getLeadingTone.cache_info()),
+        ("getChordFromPitches", getChordFromPitches.cache_info()),
+        ("getKeyFromString", getKeyFromString.cache_info()),
+        ("getPitchFromString", getPitchFromString.cache_info()),
+        ("getLeadingTone", getLeadingTone.cache_info()),
         (
             "getVerticalIntervalsFromPitches",
-            voicing.getVerticalIntervalsFromPitches.cache_info(),
+            getVerticalIntervalsFromPitches.cache_info(),
         ),
-        ("getInterval", voicing.getInterval.cache_info()),
-        ("isTriad", voicing.isTriad.cache_info()),
-        ("voiceChord", voicing.voiceChord.cache_info()),
-        ("progressionCost", voicing.progressionCost.cache_info()),
-        ("chordCost", voicing.chordCost.cache_info()),
+        ("getInterval", getInterval.cache_info()),
+        ("isTriad", isTriad.cache_info()),
+        ("voiceChord", voiceChord.cache_info()),
+        ("progressionCost", progressionCost.cache_info()),
+        ("chordCost", chordCost.cache_info()),
     )
+
+
+def romanNumeralsToPitches(romanNumerals):
+    pitchTuples = []
+    for rn in romanNumerals:
+        pitchTuples.append(tuple(p.nameWithOctave for p in rn.pitches))
+    return pitchTuples
 
 
 class TestGeneral(unittest.TestCase):
     def test_voicing_length_strings(self):
         pitches = ("C4", "E4", "G4")
-        voicings = voicing.voiceChord(pitches)
+        voicings = voiceChord(pitches)
         self.assertEqual(len(voicings), 43)
 
-    def test_voicing_length_music21(self):
+    def test_voicing_length_chord(self):
         chord = Chord("C4 E4 G4")
         pitches = [p.nameWithOctave for p in chord.pitches]
-        voicings = voicing.voiceChord(tuple(pitches))
+        voicings = voiceChord(tuple(pitches))
         self.assertEqual(len(voicings), 43)
 
     def test_voicing_length_romannumerals(self):
         rn = RomanNumeral("I", "C")
         pitches = [p.nameWithOctave for p in rn.pitches]
-        voicings = voicing.voiceChord(tuple(pitches))
+        voicings = voiceChord(tuple(pitches))
         self.assertEqual(len(voicings), 43)
 
-    def test_voicing_cost_strings(self):
+    def test_voicing_cost(self):
         chords = {
             ("C3", "C4", "E4", "G4"): 0,
             ("C3", "G3", "E4", "G4"): Cost.NOTIDEAL,
         }
         for pitches, costGT in chords.items():
             with self.subTest(msg=pitches):
-                cost = voicing.chordCost(pitches)
+                cost = chordCost(pitches)
                 self.assertEqual(cost, costGT)
 
     def test_cache_info(self):
@@ -105,19 +125,19 @@ class TestGeneral(unittest.TestCase):
             RomanNumeral("I", "C"),
             RomanNumeral("V", "C"),
         ]
-        voicing.voiceProgression(progression)
+        voiceProgression(progression)
         caches = getCaches()
         cachesGT = (
-            {"hits": 3956, "misses": 95, "currsize": 95},
-            {"hits": 1978, "misses": 1, "currsize": 1},
-            {"hits": 905, "misses": 17, "currsize": 17},
-            {"hits": 1977, "misses": 1, "currsize": 1},
-            {"hits": 3867, "misses": 89, "currsize": 89},
-            {"hits": 8761, "misses": 114, "currsize": 114},
-            {"hits": 87, "misses": 4, "currsize": 4},
-            {"hits": 0, "misses": 2, "currsize": 2},
-            {"hits": 0, "misses": 1978, "currsize": 1978},
-            {"hits": 0, "misses": 89, "currsize": 89},
+            {"hits": 3956, "misses": 95},  # getChordFromPitches
+            {"hits": 1978, "misses": 1},  # getKeyFromString
+            {"hits": 905, "misses": 17},  # getPitchFromString
+            {"hits": 1977, "misses": 1},  # getLeadingTone
+            {"hits": 3867, "misses": 89},  # getVerticalIntervalsFromPitches
+            {"hits": 8761, "misses": 114},  # getInterval
+            {"hits": 87, "misses": 4},  # isTriad
+            {"hits": 0, "misses": 2},  # voiceChord
+            {"hits": 0, "misses": 1978},  # progressionCost
+            {"hits": 0, "misses": 89},  # chordCost
         )
         for i in range(len(cachesGT)):
             cacheName, cacheInfo = caches[i]
@@ -125,91 +145,101 @@ class TestGeneral(unittest.TestCase):
             with self.subTest(msg=cacheName):
                 self.assertEqual(cacheInfo.hits, cacheGT["hits"])
                 self.assertEqual(cacheInfo.misses, cacheGT["misses"])
-                self.assertEqual(cacheInfo.currsize, cacheGT["currsize"])
 
     def test_progression_cost(self):
         pitches1 = ("C3", "C4", "E4", "G4")
         pitches2 = ("G2", "B3", "D4", "G4")
         key = "C"
-        costGT = voicing.applyRule(voicing.Rule.MELODIC_INTERVAL_BEYONDTHIRD)
-        cost = voicing.progressionCost(key, pitches1, pitches2)
+        costGT = applyRule(Rule.MELODIC_INTERVAL_BEYONDTHIRD)
+        cost = progressionCost(key, pitches1, pitches2)
         self.assertEqual(cost, costGT)
 
     def tearDown(self):
         cleanupCache()
 
 
-# class TestBasic(unittest.TestCase):
-#     def test_cache_info(self):
-#         progression = [
-#             RomanNumeral("I", "C"),
-#             RomanNumeral("IV", "C"),
-#             RomanNumeral("Cad64", "C"),
-#             RomanNumeral("V", "C"),
-#             RomanNumeral("I", "C"),
-#         ]
-#         voicing.voiceProgression(progression)
-#         caches = (
-#             ("getChordFromPitches", voicing.getChordFromPitches.cache_info()),
-#             ("getKeyFromString", voicing.getKeyFromString.cache_info()),
-#             ("getPitchFromString", voicing.getPitchFromString.cache_info()),
-#             ("getLeadingTone", voicing.getLeadingTone.cache_info()),
-#             (
-#                 "getVerticalIntervalsFromPitches",
-#                 voicing.getVerticalIntervalsFromPitches.cache_info(),
-#             ),
-#             ("getInterval", voicing.getInterval.cache_info()),
-#             ("isTriad", voicing.isTriad.cache_info()),
-#             ("voiceChord", voicing.voiceChord.cache_info()),
-#             ("progressionCost", voicing.progressionCost.cache_info()),
-#             ("chordCost", voicing.chordCost.cache_info()),
-#         )
-#         cachesGT = (
-#             {"hits": 13064, "misses": 173, "currsize": 173},
-#             {"hits": 6532, "misses": 1, "currsize": 1},
-#             {"hits": 1780, "misses": 24, "currsize": 24},
-#             {"hits": 6531, "misses": 1, "currsize": 1},
-#             {"hits": 12901, "misses": 163, "currsize": 163},
-#             {"hits": 27617, "misses": 266, "currsize": 266},
-#             {"hits": 161, "misses": 6, "currsize": 6},
-#             {"hits": 1, "misses": 4, "currsize": 4},
-#             {"hits": 0, "misses": 6532, "currsize": 6532},
-#             {"hits": 43, "misses": 163, "currsize": 163},
-#         )
-#         for i in range(len(cachesGT)):
-#             cacheName, cacheInfo = caches[i]
-#             cacheGT = cachesGT[i]
-#             with self.subTest(msg=cacheName):
-#                 self.assertEqual(cacheInfo.hits, cacheGT["hits"])
-#                 self.assertEqual(cacheInfo.misses, cacheGT["misses"])
-#                 self.assertEqual(cacheInfo.currsize, cacheGT["currsize"])
+class TestTrivialExample(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.testFile = trivial
+        cls.voicingsLengthGT = (43, 43, 43, 43, 43)
+        cls.cachesGT = (
+            {"hits": 3698, "misses": 46},  # getChordFromPitches
+            {"hits": 1849, "misses": 1},  # getKeyFromString
+            {"hits": 449, "misses": 10},  # getPitchFromString
+            {"hits": 1848, "misses": 1},  # getLeadingTone
+            {"hits": 3655, "misses": 43},  # getVerticalIntervalsFromPitches
+            {"hits": 7799, "misses": 71},  # getInterval
+            {"hits": 42, "misses": 2},  # isTriad
+            {"hits": 4, "misses": 1},  # voiceChord
+            {"hits": 5547, "misses": 1849},  # progressionCost
+            {"hits": 172, "misses": 43},  # chordCost
+        )
 
-#     def tearDown(self):
-#         cleanupCache()
+    def setUp(self):
+        self.s = m21ParseData(self.testFile, format="romantext")
+        self.romanNumerals = [
+            rn for rn in self.s.flat.getElementsByClass("RomanNumeral")
+        ]
+
+    def test_voicing_length(self):
+        pitchTuples = romanNumeralsToPitches(self.romanNumerals)
+        for i, pitches in enumerate(pitchTuples):
+            voicings = voiceChord(pitches)
+            voicingLengthGT = self.voicingsLengthGT[i]
+            with self.subTest(msg=str(pitches)):
+                self.assertEqual(len(voicings), voicingLengthGT)
+
+    def test_cache_info(self):
+        voiceProgression(self.romanNumerals)
+        caches = getCaches()
+        for i, cache in enumerate(caches):
+            cacheName, cacheInfo = cache
+            cacheGT = self.cachesGT[i]
+            with self.subTest(msg=cacheName):
+                self.assertEqual(cacheInfo.hits, cacheGT["hits"])
+                self.assertEqual(cacheInfo.misses, cacheGT["misses"])
+
+    def tearDown(self):
+        cleanupCache()
 
 
-# class TestExampleTrivial(unittest.TestCase):
-#     def setUp(self):
-#         self.s = parse(trivial, format="romantext")
-#         self.romanNumerals = [
-#             rn for rn in self.s.flat.getElementsByClass("RomanNumeral")
-#         ]
-#         self.pitches = [rn.pitches for rn in self.romanNumerals]
-#         self.pitchTuples = []
-#         for pitches in self.pitches:
-#             self.pitchTuples.append(tuple([p.nameWithOctave for p in pitches]))
+class TestBasicExample(TestTrivialExample):
+    @classmethod
+    def setUpClass(cls):
+        cls.testFile = basic
+        cls.voicingsLengthGT = (43, 46, 28, 46, 43)
+        cls.cachesGT = (
+            {"hits": 13064, "misses": 173},  # getChordFromPitches
+            {"hits": 6532, "misses": 1},  # getKeyFromString
+            {"hits": 1780, "misses": 24},  # getPitchFromString
+            {"hits": 6531, "misses": 1},  # getLeadingTone
+            {"hits": 12901, "misses": 163},  # getVerticalIntervalsFromPitches
+            {"hits": 27617, "misses": 266},  # getInterval
+            {"hits": 161, "misses": 6},  # isTriad
+            {"hits": 1, "misses": 4},  # voiceChord
+            {"hits": 0, "misses": 6532},  # progressionCost
+            {"hits": 43, "misses": 163},  # chordCost
+        )
 
-#     def test_voicing_length(self):
-#         voicings = voicing.voiceChord(self.pitchTuples[0])
-#         self.assertEqual(len(voicings), 43)
 
-#     def tearDown(self):
-#         cleanupCache()
-
-
-# class TestCaching(unittest.TestCase):
-#     def test_caching(self):
-#         self.assertEqual(True, True)
+class TestChangingKeysExample(TestTrivialExample):
+    @classmethod
+    def setUpClass(cls):
+        cls.testFile = changingKeys
+        cls.voicingsLengthGT = (43, 43, 46, 46, 43, 43)
+        cls.cachesGT = (
+            {"hits": 15842, "misses": 95},  # getChordFromPitches
+            {"hits": 7921, "misses": 2},  # getKeyFromString
+            {"hits": 1033, "misses": 17},  # getPitchFromString
+            {"hits": 7919, "misses": 2},  # getLeadingTone
+            {"hits": 15753, "misses": 89},  # getVerticalIntervalsFromPitches
+            {"hits": 32469, "misses": 178},  # getInterval
+            {"hits": 87, "misses": 4},  # isTriad
+            {"hits": 4, "misses": 2},  # voiceChord
+            {"hits": 1849, "misses": 7921},  # progressionCost
+            {"hits": 175, "misses": 89},  # chordCost
+        )
 
 
 if __name__ == "__main__":
