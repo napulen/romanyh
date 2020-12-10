@@ -1,7 +1,6 @@
 import unittest
 
 from music21.chord import Chord
-from music21.pitch import Pitch
 from music21.roman import RomanNumeral
 from music21.converter import parseData as m21ParseData
 

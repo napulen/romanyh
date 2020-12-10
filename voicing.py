@@ -1,21 +1,14 @@
 import copy
 import argparse
-import itertools
-from fractions import Fraction
 from functools import lru_cache
 from enum import IntEnum
 
 from music21.layout import StaffGroup
 from music21.converter import parse
-from music21.note import Note
 from music21.pitch import Pitch
 from music21.chord import Chord
-from music21.roman import RomanNumeral
 from music21.key import Key
-from music21.meter import TimeSignature
 from music21.clef import BassClef, TrebleClef
-from music21.instrument import Piano
-from music21.stream import Part, Score, Voice
 from music21.interval import Interval
 
 from unconventional_chords import unconventional_chords
