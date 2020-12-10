@@ -2,12 +2,12 @@
 
 A voice-leading algorithm that accepts [RomanText](https://doi.org/10.5281/zenodo.3527756) inputs and produces harmonized scores.
 
-Developed by Néstor Nápoles López. Forked from [Eric Zhang's project](https://github.com/ekzhang/harmony).
+Developed by Néstor Nápoles López. A fork of [Eric Zhang's `harmony`](https://github.com/ekzhang/harmony).
 
 ## Why is it called romanyh?
 
 1. Emphasizes the importance of roman numeral inputs.
-2. Anagram of [harmony](https://github.com/ekzhang/harmony), the repository that `romanyh` is based on.
+2. Anagram of **harmony**.
 
 
 ## Usage
