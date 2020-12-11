@@ -24,7 +24,7 @@ def downloadAndExtract(listFile="dataset.txt"):
         if "analysis" in f and "feedback_on" not in f and f.endswith("txt"):
             localFileName = repo.extract(f)
             directory.append(localFileName)
-    with open("dataset.txt", "w") as fout:
+    with open(listFile, "w") as fout:
         fout.write("\n".join(directory))
 
 
