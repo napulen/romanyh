@@ -1,4 +1,4 @@
-# romanyh
+# ![romany](romanylogo.png)
 
 A voice-leading algorithm that accepts [RomanText](https://doi.org/10.5281/zenodo.3527756) inputs and produces harmonized scores.
 
