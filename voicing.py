@@ -295,7 +295,7 @@ def progressionCost(key, pitches1, pitches2):
             if hLower.generic.directed != 2 and hUpper.generic.directed != -2:
                 cost += applyRule(Rule.UNISON_BY_LEAP)
         # Oblique motion is fine
-        elif hLower.name == "P1" or hUpper.name == "P1":
+        elif hLower.direction == 0 or hUpper.direction == 0:
             continue
         # Parallel fifths
         if i1j1.generic.mod7 == 5 and i2j2.generic.mod7 == 5:
