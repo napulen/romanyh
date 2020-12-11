@@ -474,6 +474,12 @@ def voiceLeader(romantext):  # Previously generateChorale
     return score
 
 
+def harmonizeFile(inputFile):
+    s = parse(inputFile, format="rntext")
+    v = voiceLeader(s)
+    return v
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generates four-part harmony with idiomatic "
@@ -487,8 +493,7 @@ def main():
         help="A RomanText input file with the chord progression",
     )
     args = parser.parse_args()
-    s = parse(args.input, format="rntext")
-    voiceLeader(s).show()
+    harmonizeFile(args.input)
 
 
 if __name__ == "__main__":
