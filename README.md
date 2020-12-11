@@ -7,7 +7,7 @@ Developed by Néstor Nápoles López. A fork of [Eric Zhang's `harmony`](https:/
 ## Why is it called romanyh?
 
 1. Emphasizes the importance of roman numeral inputs.
-2. Anagram of **harmony**.
+2. Anagram of `harmony`.
 
 
 ## Usage
