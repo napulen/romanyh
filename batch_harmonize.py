@@ -36,7 +36,11 @@ if __name__ == "__main__":
             if not os.path.exists(outputFolder):
                 os.makedirs(outputFolder)
             localFileName = os.path.join(outputFolder, get_valid_filename(f))
-            s.write(fmt="musicxml", fp=localFileName)
-            print(f)
+            try:
+                s.write(fmt="musicxml", fp=localFileName)
+                print(f)
+            except:
+                print(f + "\t\tFAILED TO WRITE MUSICXML")
+                pass
         else:
             print(f + "\t\tFAILED")
