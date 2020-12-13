@@ -205,6 +205,7 @@ def _voice(part, voicingSoFar, remainingNotes):
 def _voiceChord(pitches):
     chord = getChordFromPitches(pitches)
     pitchNames = list(chord.pitchNames)
+    doublings = []
     if isTriad(frozenset(pitchNames)):
         if chord.inversion() != 2:
             doublings = [
