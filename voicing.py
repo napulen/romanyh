@@ -455,6 +455,32 @@ def decorateScore(romantext):  # Previously generateScore
     return score
 
 
+omittedAndAdded = [
+    "[no1]",
+    "[no3no5]",
+    "[no3]",
+    "[no5]",
+    "[add9]",
+    "[add6]",
+    "[add4]",
+    "[add2]",
+]
+ninths = ["b9", "#9", "M9", "m9", "b2"]
+
+
+def removeOmittedAddedDegrees(figure):
+    for elem in omittedAndAdded:
+        figure = figure.replace(elem, "")
+    return figure
+
+
+def removeNinths(figure):
+    for n in ninths:
+        figure = figure.replace(n, "")
+    figure = figure.replace("9", "7")
+    return figure
+
+
 def voiceLeader(romantext):  # Previously generateChorale
     """Produces stylistic voice leading for a given stream of RomanNumerals.
 
@@ -468,6 +494,17 @@ def voiceLeader(romantext):  # Previously generateChorale
         keyFigure = (rn.key.mode, rn.figure)
         if keyFigure in unconventional_chords:
             rn.figure = unconventional_chords[keyFigure]
+        if rn.omittedSteps or rn.addedSteps:
+            rn.figure = removeOmittedAddedDegrees(rn.figure)
+        if "9" in rn.figure:
+            rn.figure = removeNinths(rn.figure)
+        if (
+            not rn.isTriad()
+            and not rn.isSeventh()
+            and not rn.isAugmentedSixth()
+        ):
+            print(rn.figure)
+            rn.figure = "I" if rn.key.mode == "major" else "i"
     voicings, score = voiceProgression(romanNumerals)
     for idx, romanNumeral in enumerate(romanNumerals):
         romanNumeral.notes = voicings[idx].notes
@@ -494,7 +531,7 @@ def main():
         help="A RomanText input file with the chord progression",
     )
     args = parser.parse_args()
-    harmonizeFile(args.input)
+    harmonizeFile(args.input).show()
 
 
 if __name__ == "__main__":
