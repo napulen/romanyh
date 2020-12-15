@@ -6,22 +6,6 @@ import re
 import sys
 
 
-keysPerPitchClass = {
-    0: {"major": "C", "minor": "c"},
-    1: {"major": "Db", "minor": "c#"},
-    2: {"major": "D", "minor": "d"},
-    3: {"major": "Eb", "minor": "eb"},
-    4: {"major": "E", "minor": "e"},
-    5: {"major": "F", "minor": "f"},
-    6: {"major": "F#", "minor": "f#"},
-    7: {"major": "G", "minor": "g"},
-    8: {"major": "Ab", "minor": "ab"},
-    9: {"major": "A", "minor": "a"},
-    10: {"major": "Bb", "minor": "bb"},
-    11: {"major": "B", "minor": "b"},
-}
-
-
 def findKeysInRomanTextString(rntxt):
     """Get all the keys in a RomanText string.
 
@@ -70,7 +54,7 @@ def transposeRomanText(f, newTonic="C"):
     with open(f) as fd:
         rntxt = fd.read()
     keys = findKeysInRomanTextString(rntxt)
-    transposedKeys = transposeKeys(keys, transPitchClass)
+    transposedKeys = transposeKeys(keys, newTonic)
     keysString = [f" {k}: " for k in keys]
     transposedKeysString = [f" {k}: " for k in transposedKeys]
     for original, transposed in zip(keysString, transposedKeysString):
@@ -80,6 +64,6 @@ def transposeRomanText(f, newTonic="C"):
 
 if __name__ == "__main__":
     inputFile = sys.argv[1]
-    pc = int(sys.argv[2])
-    transposedRntxt = transposeRomanText(inputFile, pc)
+    newTonic = sys.argv[2] if len(sys.argv) == 3 else "C"
+    transposedRntxt = transposeRomanText(inputFile, newTonic)
     print(transposedRntxt)
