@@ -57,9 +57,13 @@ def transposeRomanText(f, newTonic="C"):
     transposedKeys = transposeKeys(keys, newTonic)
     keysString = [f" {k}: " for k in keys]
     transposedKeysString = [f" {k}: " for k in transposedKeys]
+    transposedRntxt = ""
     for original, transposed in zip(keysString, transposedKeysString):
-        rntxt = rntxt.replace(original, transposed, 1)
-    return rntxt
+        solved, replace, remainder = rntxt.partition(original)
+        transposedRntxt += solved + transposed
+        rntxt = remainder
+    transposedRntxt += remainder
+    return transposedRntxt
 
 
 if __name__ == "__main__":
