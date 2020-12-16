@@ -1,5 +1,8 @@
 from urllib.request import urlretrieve
 from zipfile import ZipFile
+import os
+
+from transposition import transposeRomanText
 
 
 def downloadAndExtract(listFile=None):
@@ -29,6 +32,39 @@ def downloadAndExtract(listFile=None):
         with open(listFile, "w") as fout:
             fout.write("\n".join(directory))
     return directory
+
+
+def transposeAll(keys=[]):
+    """Transposes every file in the dataset to other keys.
+
+    If keys is not provided, the files will be transposed
+    to 12 different keys in the same mode.
+    """
+    if not os.path.exists("dataset.txt"):
+        downloadAndExtract(listFile="dataset.txt")
+    with open("dataset.txt") as fd:
+        files = fd.read().split("\n")
+    if not keys:
+        keys = [
+            "C",
+            "C#",
+            "D",
+            "Eb",
+            "E",
+            "F",
+            "F#",
+            "G",
+            "Ab",
+            "A",
+            "Bb",
+            "B",
+        ]
+    for f in files:
+        for k in keys:
+            transposed = transposeRomanText(f, k)
+            transposedFileName = f.replace(".txt", f"_{k}.txt")
+            with open(transposedFileName, "w") as fout:
+                fout.write(transposed)
 
 
 if __name__ == "__main__":
