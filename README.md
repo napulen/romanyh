@@ -67,7 +67,7 @@ score.show()
 
 The function returns a [music21.stream.Stream](https://web.mit.edu/music21/doc/moduleReference/moduleStream.html) object.
 
-The difference between `harmonize` and `harmonizations` is that the latter is a generator producing a different harmonizations for the same progression:
+The difference between `harmonize` and `harmonizations` is that the latter is a generator. It produces a different harmonization in every iteration:
 
 ```python
 import romanyh
@@ -77,14 +77,14 @@ for score in romanyh.harmonizations(inputFile):
     score.show()
 ```
 
-This is useful when you want to generate alternative harmonizations of the same input.
+This is useful when you want to generate alternative voicings for the same input.
 
 The harmonizations are sorted according to the voice-leading algorithm. 
 You can expect each successive harmonization to be worse than the previous one.
 
-Similarly, you can expect the first harmonization to be the *best* one.
+Similarly, you can expect the first harmonization to always be the *best* one. At least according to what the rules of the algorithm decide.
 
-The first harmonization provided by `harmonizations` should always be the same than the one provided by `harmonize`.
+The first harmonization provided by `harmonizations` is always the same than the one provided by `harmonize`.
 
 ## License
 
