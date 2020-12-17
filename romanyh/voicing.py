@@ -1,65 +1,17 @@
 import copy
 import argparse
 from functools import lru_cache
-from enum import IntEnum
 
 from music21.layout import StaffGroup
 from music21.converter import parse
+from music21.note import Note
 from music21.pitch import Pitch
 from music21.chord import Chord
 from music21.key import Key
 from music21.clef import BassClef, TrebleClef
 from music21.interval import Interval
 
-from unconventional_chords import unconventional_chords
-
-
-class PartEnum(IntEnum):
-    SOPRANO = 3
-    ALTO = 2
-    TENOR = 1
-    BASS = 0
-
-
-class IntervalV(IntEnum):
-    ALTO_SOPRANO = 5
-    TENOR_SOPRANO = 4
-    TENOR_ALTO = 3
-    BASS_SOPRANO = 2
-    BASS_ALTO = 1
-    BASS_TENOR = 0
-
-
-class Cost(IntEnum):
-    FORBIDDEN = 64
-    VERYBAD = 8
-    BAD = 4
-    MAYBEBAD = 2
-    NOTIDEAL = 1
-
-
-class Rule(IntEnum):
-    # progression-related arules
-    IDENTICAL_VOICING = 1
-    ALLVOICES_SAME_DIRECTION = 2
-    MELODIC_INTERVAL_FORBIDDEN = 3
-    MELODIC_INTERVAL_BEYONDOCTAVE = 4
-    MELODIC_INTERVAL_BEYONDFIFTH = 5
-    MELODIC_INTERVAL_BEYONDTHIRD = 6
-    MELODIC_INTERVAL_BEYONDSECOND = 7
-    UNISON_BY_LEAP = 8
-    PARALLEL_FIFTH = 9
-    PARALLEL_OCTAVE = 10
-    HIDDEN_FIFTH = 11
-    HIDDEN_OCTAVE = 12
-    VOICE_CROSSING = 13
-    SEVENTH_UNPREPARED = 14
-    SEVENTH_UNRESOLVED = 15
-    LEADINGTONE_UNRESOLVED = 16
-    # voicing-related rules
-    VERTICAL_NOT_DOUBLINGROOT = 17
-    VERTICAL_SEVENTH_MISSINGNOTE = 18
-
+from .enums import PartEnum, Cost, Rule, IntervalV
 
 _ruleCostMapping = {
     # progression rules
@@ -389,7 +341,7 @@ def chordCost(pitches):
     return cost
 
 
-def voiceProgression(romanNumerals):
+def solveProgression(romanNumerals):
     """Voices a chord progression in a specified key using DP.
 
     Follows eighteenth-century voice leading procedures, as guided by the cost
@@ -398,33 +350,26 @@ def voiceProgression(romanNumerals):
     numerals in the chord progression.
     """
     keys = [rn.secondaryRomanNumeralKey or rn.key for rn in romanNumerals]
-
-    dp = [{} for _ in romanNumerals]
+    costTable = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
         pitches = tuple([p.nameWithOctave for p in numeral.pitches])
         voicings = voiceChord(pitches)
         if i == 0:
             for v in voicings:
-                dp[0][v] = (chordCost(v), None)
+                costTable[0][v] = (chordCost(v), None)
         else:
             for v in voicings:
                 best = (float("inf"), None)
-                for pv_pitches, (pcost, _) in dp[i - 1].items():
+                for pv_pitches, (pcost, _) in costTable[i - 1].items():
                     pvkey = keys[i - 1].tonicPitchNameWithCase
                     ccost = pcost + progressionCost(pvkey, pv_pitches, v)
                     if ccost < best[0]:
                         best = (ccost, pv_pitches)
-                dp[i][v] = (best[0] + chordCost(v), best[1])
-
-    cur, (totalCost, _) = min(dp[-1].items(), key=lambda p: p[1][0])
-    ret = []
-    for i in reversed(range(len(romanNumerals))):
-        ret.append(Chord(cur))
-        cur = dp[i][cur][1]
-    return list(reversed(ret)), totalCost
+                costTable[i][v] = (best[0] + chordCost(v), best[1])
+    return costTable
 
 
-def decorateScore(romantext):  # Previously generateScore
+def decorateScore(romantext, progression):
     """Decorate an annotated chorale into piano form.
 
     Receives a romantext stream that has been properly voiced by the
@@ -437,9 +382,8 @@ def decorateScore(romantext):  # Previously generateScore
     bassStaff = copy.deepcopy(trebleStaff)
     trebleStaff[0].insert(0, TrebleClef())
     bassStaff[0].insert(0, BassClef())
-    for rn in romanNumerals:
-        b, t, a, s = copy.deepcopy(rn.notes)
-        b.duration = t.duration = a.duration = s.duration = rn.duration
+    for rn, pitches in zip(romanNumerals, progression):
+        b, t, a, s = [Note(p, quarterLength=rn.quarterLength) for p in pitches]
         b.lyric = rn.lyric
         trebleStaff.measure(rn.measureNumber).insert(rn.offset, s)
         trebleStaff.measure(rn.measureNumber).insert(rn.offset, a)
@@ -455,84 +399,16 @@ def decorateScore(romantext):  # Previously generateScore
     return score
 
 
-omittedAndAdded = [
-    "[no1]",
-    "[no3no5]",
-    "[no3]",
-    "[no5]",
-    "[add9]",
-    "[add6]",
-    "[add4]",
-    "[add2]",
-]
-ninths = ["b9", "#9", "M9", "m9", "b2"]
-
-
-def removeOmittedAddedDegrees(figure):
-    for elem in omittedAndAdded:
-        figure = figure.replace(elem, "")
-    return figure
-
-
-def removeNinths(figure):
-    for n in ninths:
-        figure = figure.replace(n, "")
-    figure = figure.replace("9", "7")
-    return figure
-
-
-def voiceLeader(romantext):  # Previously generateChorale
-    """Produces stylistic voice leading for a given stream of RomanNumerals.
-
-    The input is a stream, parsed from an input RomanText file.
-    The chords, time signature and key are all extracted from there.
-    """
-    romanNumerals = list(
-        romantext.recurse().getElementsByClass("RomanNumeral")
-    )
-    for rn in romanNumerals:
-        keyFigure = (rn.key.mode, rn.figure)
-        if keyFigure in unconventional_chords:
-            rn.figure = unconventional_chords[keyFigure]
-        if rn.omittedSteps or rn.addedSteps:
-            rn.figure = removeOmittedAddedDegrees(rn.figure)
-        if "9" in rn.figure:
-            rn.figure = removeNinths(rn.figure)
-        if (
-            not rn.isTriad()
-            and not rn.isSeventh()
-            and not rn.isAugmentedSixth()
-        ):
-            print(rn.figure)
-            rn.figure = "I" if rn.key.mode == "major" else "i"
-    voicings, score = voiceProgression(romanNumerals)
-    for idx, romanNumeral in enumerate(romanNumerals):
-        romanNumeral.notes = voicings[idx].notes
-    score = decorateScore(romantext)
-    return score
-
-
-def harmonizeFile(inputFile):
-    s = parse(inputFile, format="rntext")
-    v = voiceLeader(s)
-    return v
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Generates four-part harmony with idiomatic "
-        "voice-leading procedures and dynamic programming."
-    )
-    parser.add_argument(
-        "input",
-        type=str,
-        nargs="?",
-        default="example.rntxt",
-        help="A RomanText input file with the chord progression",
-    )
-    args = parser.parse_args()
-    harmonizeFile(args.input).show()
-
-
-if __name__ == "__main__":
-    main()
+def generateHarmonization(costTable):
+    sortedCosts = sorted(costTable[-1].items(), key=lambda p: p[1][0])
+    solutions = len(sortedCosts)
+    # progressions = [[] for _ in range(solutions)]
+    for topNthAnswer in range(solutions):
+        progression = []
+        cur, (totalCost, _) = sortedCosts[topNthAnswer]
+        for i in reversed(range(len(costTable))):
+            progression.append(cur)
+            cur = costTable[i][cur][1]
+        yield (list(reversed(progression)), totalCost)
+        # progressions[topNthAnswer] = (list(reversed(progression)), totalCost)
+    return

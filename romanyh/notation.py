@@ -82,3 +82,58 @@ unconventional_chords = {
     ("minor", "viio64b32"): "viio64",
     ("major", "V65add9"): "V65",
 }
+
+omittedAndAdded = [
+    "[no1]",
+    "[no3no5]",
+    "[no3]",
+    "[no5]",
+    "[add9]",
+    "[add6]",
+    "[add4]",
+    "[add2]",
+]
+
+ninths = ["b9", "#9", "M9", "m9", "b2"]
+
+
+def _removeOmittedAddedDegrees(figure):
+    for elem in omittedAndAdded:
+        figure = figure.replace(elem, "")
+    return figure
+
+
+def _removeNinths(figure):
+    for n in ninths:
+        figure = figure.replace(n, "")
+    figure = figure.replace("9", "7")
+    return figure
+
+
+def normalizeRomanNumerals(romantext):
+    """Normalizes conventions for RomanNumeral annotations.
+
+    Some chords are unsupported, and others have alternative notations.
+
+    Pre-process each roman numeral in the sequence to make sure they work
+    well with the harmonization algorithm.
+    """
+    romanNumerals = list(
+        romantext.recurse().getElementsByClass("RomanNumeral")
+    )
+    for rn in romanNumerals:
+        keyFigure = (rn.key.mode, rn.figure)
+        if keyFigure in unconventional_chords:
+            rn.figure = unconventional_chords[keyFigure]
+        if rn.omittedSteps or rn.addedSteps:
+            rn.figure = _removeOmittedAddedDegrees(rn.figure)
+        if "9" in rn.figure:
+            rn.figure = _removeNinths(rn.figure)
+        if (
+            not rn.isTriad()
+            and not rn.isSeventh()
+            and not rn.isAugmentedSixth()
+        ):
+            print(rn.figure)
+            rn.figure = "I" if rn.key.mode == "major" else "i"
+    return romanNumerals

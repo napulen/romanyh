@@ -1,9 +1,8 @@
-import music21
-from music21.interval import Interval
-from music21.pitch import Pitch
-from music21.key import Key
 import re
 import sys
+
+from music21.interval import Interval
+from music21.key import Key
 
 
 def findKeysInRomanTextString(rntxt):
@@ -62,7 +61,7 @@ def transposeRomanText(f, newTonic="C"):
         solved, replace, remainder = rntxt.partition(original)
         transposedRntxt += solved + transposed
         rntxt = remainder
-    transposedRntxt += remainder
+    transposedRntxt += rntxt
     return transposedRntxt
 
 
