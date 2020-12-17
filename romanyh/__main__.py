@@ -1,4 +1,5 @@
 import argparse
+import os
 import romanyh
 
 
@@ -26,21 +27,24 @@ def main():
         help="Write output to this file (ignored when --show is selected)",
     )
     parser.add_argument(
-        "--alternatives",
+        "--harmonizations",
         type=int,
-        default=5,
+        default=1,
         help="Generate N alternative harmonizations",
     )
 
     args = parser.parse_args()
-    score = romanyh.harmonize(args.input)
-    if args.show:
-        score.show()
-    else:
-        filepath = args.input.split(".")[0] + ".musicxml"
-        if args.output:
-            filepath = args.output
-        score.write(fp=filepath, fmt="musicxml")
+    for i, score in enumerate(romanyh.harmonizations(args.input)):
+        if i == args.harmonizations:
+            break
+        if args.show:
+            score.show()
+        else:
+            filepath = args.output or args.input
+            filename, extension = os.path.splitext(filepath)
+            version = f"_v{i + 1}" if i > 0 else ""
+            filepath = filename + version + ".musicxml"
+            score.write(fp=filepath, fmt="musicxml")
 
 
 if __name__ == "__main__":
