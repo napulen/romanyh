@@ -1,9 +1,7 @@
 import copy
-import argparse
 from functools import lru_cache
 
 from music21.layout import StaffGroup
-from music21.converter import parse
 from music21.note import Note
 from music21.pitch import Pitch
 from music21.chord import Chord
