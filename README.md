@@ -55,7 +55,7 @@ This will render the harmonized score in your music notation editor (hopefully).
 
 ### As a library
 
-`romanyh` exposes two functions: `harmonize` and `harmonizations`. Both receive a path to a RomanText file.
+`romanyh` exposes two functions: `harmonize` and `harmonizations`. Both receive a path to a [RomanText](https://doi.org/10.5281/zenodo.3527756) file.
 
 ```python
 import romanyh
