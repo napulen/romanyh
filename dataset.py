@@ -2,7 +2,7 @@ from urllib.request import urlretrieve
 from zipfile import ZipFile
 import os
 
-from transposition import transposeRomanText
+from romanyh.transposition import transposeRomanText
 
 
 def downloadAndExtract(listFile=None):
