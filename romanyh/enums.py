@@ -26,7 +26,7 @@ class Cost(IntEnum):
 
 
 class Rule(IntEnum):
-    # progression-related arules
+    # Progression-Related Rules
     IDENTICAL_VOICING = 1
     ALLVOICES_SAME_DIRECTION = 2
     MELODIC_INTERVAL_FORBIDDEN = 3
@@ -43,6 +43,6 @@ class Rule(IntEnum):
     SEVENTH_UNPREPARED = 14
     SEVENTH_UNRESOLVED = 15
     LEADINGTONE_UNRESOLVED = 16
-    # voicing-related rules
+    # Voicing-Related Rules
     VERTICAL_NOT_DOUBLINGROOT = 17
     VERTICAL_SEVENTH_MISSINGNOTE = 18

@@ -32,9 +32,23 @@ def main():
         default=1,
         help="Generate N alternative harmonizations",
     )
+    parser.add_argument(
+        "--close-position",
+        action="store_true",
+        help="Voice in close position (tenor and soprano within one octave)",
+    )
+    parser.add_argument(
+        "--tonic",
+        type=str,
+        default=None,
+        metavar="TONIC",
+        help="Transpose the RomanText file to a new tonic",
+    )
 
     args = parser.parse_args()
-    for i, score in enumerate(romanyh.harmonizations(args.input)):
+    for i, score in enumerate(
+        romanyh.harmonizations(args.input, args.close_position, args.tonic)
+    ):
         if i == args.harmonizations:
             break
         if args.show:

@@ -119,19 +119,27 @@ def isTriad(pitches):
     return getChordFromPitches(pitches).isTriad()
 
 
-def _voice(part, voicingSoFar, remainingNotes):
+def _voice(part, voicingSoFar, remainingNotes, closePosition=False):
     if not remainingNotes:
         # Time to break the recursion
         pitches = tuple(voicingSoFar)
         intervals = [getInterval(pitches[i], pitches[i + 1]) for i in range(3)]
-        if (
-            intervals.count(perfectUnison) <= 1
-            and 1 <= intervals[1].generic.directed <= 8
-            and 1 <= intervals[2].generic.directed <= 8
-            # and 1 <= tenorSoprano.generic.directed <= 8
-        ):
-            yield pitches
-        return
+        if not closePosition:
+            if (
+                intervals.count(perfectUnison) <= 1
+                and 1 <= intervals[1].generic.directed <= 8
+                and 1 <= intervals[2].generic.directed <= 8
+            ):
+                yield pitches
+            return
+        else:
+            tenorSoprano = getInterval(pitches[1], pitches[3])
+            if (
+                intervals.count(perfectUnison) <= 1
+                and 1 <= tenorSoprano.generic.directed <= 8
+            ):
+                yield pitches
+            return
     # Keep recursing
     minPitch, maxPitch = voice_ranges[part]
     if voicingSoFar:
@@ -149,10 +157,11 @@ def _voice(part, voicingSoFar, remainingNotes):
                     part + 1,
                     voicingSoFar + [pitchName],
                     newRemaining,
+                    closePosition,
                 )
 
 
-def _voiceChord(pitches):
+def _voiceChord(pitches, closePosition=False):
     chord = getChordFromPitches(pitches)
     pitchNames = list(chord.pitchNames)
     doublings = []
@@ -181,14 +190,17 @@ def _voiceChord(pitches):
             bassPitch = getPitchFromString(bassPitchName)
             if minBassPitch <= bassPitch <= maxBassPitch:
                 yield from _voice(
-                    PartEnum.TENOR, [bassPitchName], doubling[1:]
+                    PartEnum.TENOR,
+                    [bassPitchName],
+                    doubling[1:],
+                    closePosition,
                 )
 
 
 @lru_cache(maxsize=None)
-def voiceChord(pitches):
+def voiceChord(pitches, closePosition=False):
     cachedVoiceChord.append(pitches)
-    return [v for v in _voiceChord(pitches)]
+    return [v for v in _voiceChord(pitches, closePosition)]
 
 
 @lru_cache(maxsize=None)
@@ -339,7 +351,7 @@ def chordCost(pitches):
     return cost
 
 
-def solveProgression(romanNumerals):
+def solveProgression(romanNumerals, closePosition=False):
     """Voices a chord progression in a specified key using DP.
 
     Follows eighteenth-century voice leading procedures, as guided by the cost
@@ -351,7 +363,7 @@ def solveProgression(romanNumerals):
     costTable = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
         pitches = tuple([p.nameWithOctave for p in numeral.pitches])
-        voicings = voiceChord(pitches)
+        voicings = voiceChord(pitches, closePosition)
         if i == 0:
             for v in voicings:
                 costTable[0][v] = (chordCost(v), None)
