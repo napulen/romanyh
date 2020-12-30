@@ -1,7 +1,8 @@
-import voicing
+import romanyh
 import dataset
 import os
 import re
+import sys
 
 
 # Taken from django
@@ -19,6 +20,10 @@ def get_valid_filename(s):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        tonic = None
+    else:
+        tonic = sys.argv[1]
     datasetListFile = "dataset.txt"
     outputFolder = "harmonic_reductions"
     if os.path.isfile(datasetListFile):
@@ -26,21 +31,30 @@ if __name__ == "__main__":
             datasetFiles = fd.read().split("\n")
     else:
         datasetFiles = dataset.downloadAndExtract()
+    if not os.path.exists(outputFolder):
+        os.makedirs(outputFolder)
     for f in datasetFiles:
-        try:
-            s = voicing.harmonizeFile(f)
-        except:
-            s = None
-            pass
-        if s:
-            if not os.path.exists(outputFolder):
-                os.makedirs(outputFolder)
-            localFileName = os.path.join(outputFolder, get_valid_filename(f))
+        for closePosition in [True, False]:
             try:
-                s.write(fmt="musicxml", fp=localFileName)
-                print(f)
+                s = romanyh.harmonize(f, closePosition, tonic)
             except:
-                print(f + "\t\tFAILED TO WRITE MUSICXML")
+                s = None
                 pass
-        else:
-            print(f + "\t\tFAILED")
+            if s:
+                filename, extension = os.path.splitext(f)
+                localFileName = "{}_{}{}.musicxml".format(
+                    filename.split("Corpus")[1],
+                    tonic if tonic else "originalkey",
+                    "_closeposition" if closePosition else "",
+                )
+                localPath = os.path.join(
+                    outputFolder, get_valid_filename(localFileName)
+                )
+                try:
+                    s.write(fmt="musicxml", fp=localPath)
+                    print(f)
+                except:
+                    print(f + "\t\tFAILED TO WRITE MUSICXML")
+                    pass
+            else:
+                print(f + "\t\tFAILED")

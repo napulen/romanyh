@@ -25,4 +25,4 @@ def harmonizations(inputFile, closePosition=False, tonic=None):
 
 
 def harmonize(inputFile, closePosition=False, tonic=None):
-    return next(harmonizations(inputFile, closePosition))
+    return next(harmonizations(inputFile, closePosition, tonic))
