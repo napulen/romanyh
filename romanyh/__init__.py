@@ -14,7 +14,7 @@ def harmonizations(inputFile, closePosition=False, tonic=None):
         transposedRntxt = transposeRomanText(inputFile, tonic)
         romantext = parseData(transposedRntxt, format="rntext")
     else:
-        romantext = parse(inputFile, format="rntxt")
+        romantext = parse(inputFile, format="rntext")
     romanNumerals = normalizeRomanNumerals(romantext)
     costTable = solveProgression(romanNumerals, closePosition)
     for progression, cost in generateHarmonization(costTable):

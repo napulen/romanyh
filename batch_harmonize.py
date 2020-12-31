@@ -43,7 +43,7 @@ if __name__ == "__main__":
             if s:
                 filename, extension = os.path.splitext(f)
                 localFileName = "{}_{}{}.musicxml".format(
-                    filename.split("Corpus")[1],
+                    filename.split("Corpus", 1)[1],
                     tonic if tonic else "originalkey",
                     "_closeposition" if closePosition else "",
                 )
