@@ -34,15 +34,15 @@ def downloadAndExtract(listFile=None):
     return directory
 
 
-def transposeAll(keys=[]):
+def transposeAll(keys=[], listFile="dataset.txt"):
     """Transposes every file in the dataset to other keys.
 
     If keys is not provided, the files will be transposed
     to 12 different keys in the same mode.
     """
-    if not os.path.exists("dataset.txt"):
-        downloadAndExtract(listFile="dataset.txt")
-    with open("dataset.txt") as fd:
+    if not os.path.exists(listFile):
+        downloadAndExtract(listFile)
+    with open(listFile) as fd:
         files = fd.read().split("\n")
     if not keys:
         keys = [
