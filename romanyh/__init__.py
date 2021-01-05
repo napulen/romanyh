@@ -39,4 +39,8 @@ def harmonize(
     firstVoicing=None,
     lastVoicing=None,
 ):
-    return next(harmonizations(inputFile, closePosition, tonic))
+    return next(
+        harmonizations(
+            inputFile, closePosition, tonic, firstVoicing, lastVoicing
+        )
+    )
