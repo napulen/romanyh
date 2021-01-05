@@ -351,7 +351,9 @@ def chordCost(pitches):
     return cost
 
 
-def solveProgression(romanNumerals, closePosition=False):
+def solveProgression(
+    romanNumerals, closePosition=False, firstVoicing=None, lastVoicing=None
+):
     """Voices a chord progression in a specified key using DP.
 
     Follows eighteenth-century voice leading procedures, as guided by the cost
@@ -363,7 +365,12 @@ def solveProgression(romanNumerals, closePosition=False):
     costTable = [{} for _ in romanNumerals]
     for i, numeral in enumerate(romanNumerals):
         pitches = tuple([p.nameWithOctave for p in numeral.pitches])
-        voicings = voiceChord(pitches, closePosition)
+        if i == 0 and firstVoicing:
+            voicings = [firstVoicing]
+        elif i == (len(romanNumerals) - 1) and lastVoicing:
+            voicings = [lastVoicing]
+        else:
+            voicings = voiceChord(pitches, closePosition)
         if i == 0:
             for v in voicings:
                 costTable[0][v] = (chordCost(v), None)

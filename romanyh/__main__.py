@@ -1,6 +1,19 @@
 import argparse
 import os
 import romanyh
+from music21.pitch import Pitch
+
+
+def valid_voicing(s):
+    pitchStrings = s.split()
+    if len(pitchStrings) != 4:
+        msg = "The voicing should have exactly 4 notes"
+        raise argparse.ArgumentTypeError(msg)
+    b, t, a, s = [Pitch(p) for p in pitchStrings]
+    if not b <= t <= a <= s:
+        msg = "The notes of the given voicing should be ordered BTAS"
+        raise argparse.ArgumentTypeError(msg)
+    return tuple(pitchStrings)
 
 
 def main():
@@ -44,10 +57,26 @@ def main():
         metavar="TONIC",
         help="Transpose the RomanText file to a new tonic",
     )
+    parser.add_argument(
+        "--first-voicing",
+        type=valid_voicing,
+        help="Fix the first voicing to something of your liking",
+    )
+    parser.add_argument(
+        "--last-voicing",
+        type=valid_voicing,
+        help="Fix the last voicing to something of your liking",
+    )
 
     args = parser.parse_args()
     for i, score in enumerate(
-        romanyh.harmonizations(args.input, args.close_position, args.tonic)
+        romanyh.harmonizations(
+            args.input,
+            args.close_position,
+            args.tonic,
+            args.first_voicing,
+            args.last_voicing,
+        )
     ):
         if i == args.harmonizations:
             break

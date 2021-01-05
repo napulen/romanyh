@@ -9,14 +9,22 @@ from .voicing import decorateScore
 from .transposition import transposeRomanText
 
 
-def harmonizations(inputFile, closePosition=False, tonic=None):
+def harmonizations(
+    inputFile,
+    closePosition=False,
+    tonic=None,
+    firstVoicing=None,
+    lastVoicing=None,
+):
     if tonic:
         transposedRntxt = transposeRomanText(inputFile, tonic)
         romantext = parseData(transposedRntxt, format="rntext")
     else:
         romantext = parse(inputFile, format="rntext")
     romanNumerals = normalizeRomanNumerals(romantext)
-    costTable = solveProgression(romanNumerals, closePosition)
+    costTable = solveProgression(
+        romanNumerals, closePosition, firstVoicing, lastVoicing
+    )
     for progression, cost in generateHarmonization(costTable):
         romantextcopy = copy.deepcopy(romantext)
         score = decorateScore(romantextcopy, progression)
@@ -24,5 +32,11 @@ def harmonizations(inputFile, closePosition=False, tonic=None):
     return
 
 
-def harmonize(inputFile, closePosition=False, tonic=None):
+def harmonize(
+    inputFile,
+    closePosition=False,
+    tonic=None,
+    firstVoicing=None,
+    lastVoicing=None,
+):
     return next(harmonizations(inputFile, closePosition, tonic))
