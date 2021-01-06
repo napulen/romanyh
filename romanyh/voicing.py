@@ -36,6 +36,7 @@ _ruleCostMapping = {
 
 
 def applyRule(rule):
+    """Given a rule enum, provide the cost of breaking that rule."""
     return _ruleCostMapping[rule]
 
 
@@ -73,30 +74,35 @@ cachedChordCost = []
 
 @lru_cache(maxsize=None)
 def getChordFromPitches(pitches):
+    """Cached method. Calls music21.chord.Chord()."""
     cachedGetChordFromPitches.append(pitches)
     return Chord(pitches)
 
 
 @lru_cache(maxsize=None)
 def getKeyFromString(key):
+    """Cached method. Calls music21.key.Key()."""
     cachedGetKeyFromString.append(key)
     return Key(key)
 
 
 @lru_cache(maxsize=None)
 def getPitchFromString(p):
+    """Cached method. Calls music21.pitch.Pitch()."""
     cachedGetPitchFromString.append(p)
     return Pitch(p)
 
 
 @lru_cache(maxsize=None)
 def getLeadingTone(key):
+    """Cached method. Calls music21.key.Key.getLeadingTone()."""
     cachedGetLeadingTone.append(key)
     return getKeyFromString(key).getLeadingTone()
 
 
 @lru_cache(maxsize=None)
 def getVerticalIntervalsFromPitches(pitches):
+    """Cached method. Returns 6 vertical intervals: BT, BA, BS, TA, TS, AS."""
     cachedGetVerticalIntervalsFromPitches.append(pitches)
     return [
         getInterval(pitches[i], pitches[j])
@@ -107,6 +113,7 @@ def getVerticalIntervalsFromPitches(pitches):
 
 @lru_cache(maxsize=None)
 def getInterval(p1, p2):
+    """Cached method. Calls music21.interval.Interval()."""
     cachedGetInterval.append((p1, p2))
     pitch1 = getPitchFromString(p1)
     pitch2 = getPitchFromString(p2)
@@ -115,6 +122,7 @@ def getInterval(p1, p2):
 
 @lru_cache(maxsize=None)
 def isTriad(pitches):
+    """Cached method. Calls music21.chord.Chord.isTriad()."""
     cachedIsTriad.append(pitches)
     return getChordFromPitches(pitches).isTriad()
 
@@ -199,13 +207,19 @@ def _voiceChord(pitches, closePosition=False):
 
 @lru_cache(maxsize=None)
 def voiceChord(pitches, closePosition=False):
+    """Cached method. Return the possible voicings for a tuple of pitches."""
     cachedVoiceChord.append(pitches)
     return [v for v in _voiceChord(pitches, closePosition)]
 
 
 @lru_cache(maxsize=None)
 def progressionCost(key, pitches1, pitches2):
-    """An alternative algorithm for computing the cost"""
+    """Computes the cost of two successive chords.
+
+    The cost is computed based on around a dozen rules.
+    The rules are mostly defined in terms of vertical and
+    horizontal intervals, although some structural considerations
+    are taken into account (e.g., sevenths being resolved)."""
     cachedProgressionCost.append((key, pitches1, pitches2))
     chord1 = getChordFromPitches(pitches1)
     chord2 = getChordFromPitches(pitches2)
@@ -335,7 +349,11 @@ def progressionCost(key, pitches1, pitches2):
 
 @lru_cache(maxsize=None)
 def chordCost(pitches):
-    """Computes elements of cost that only pertain to a single chord."""
+    """Computes the cost of an individual voicing, regardless of context.
+
+    The cost of a single voicing can be evaluated, for example, to prefer
+    specific doublings or to prefer spelling all the notes in a seventh chord
+    (over, for example, omitting the third or fifth)."""
     cachedChordCost.append(pitches)
     chord = getChordFromPitches(pitches)
     cost = 0
@@ -417,6 +435,12 @@ def decorateScore(romantext, progression):
 
 
 def generateHarmonization(costTable):
+    """Yields a harmonization from the dynamic-programming cost table.
+
+    The 'best' harmonization is the one with the lowest cost at the
+    last chord of the array. Each iteration over the K voicings of
+    the last chord yields the best kth solution.
+    """
     sortedCosts = sorted(costTable[-1].items(), key=lambda p: p[1][0])
     solutions = len(sortedCosts)
     # progressions = [[] for _ in range(solutions)]

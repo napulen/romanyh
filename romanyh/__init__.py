@@ -16,6 +16,7 @@ def harmonizations(
     firstVoicing=None,
     lastVoicing=None,
 ):
+    """Yields harmonizations for a RomanText input."""
     if tonic:
         transposedRntxt = transposeRomanText(inputFile, tonic)
         romantext = parseData(transposedRntxt, format="rntext")
@@ -39,6 +40,7 @@ def harmonize(
     firstVoicing=None,
     lastVoicing=None,
 ):
+    """Returns the best harmonization for a RomanText input."""
     return next(
         harmonizations(
             inputFile, closePosition, tonic, firstVoicing, lastVoicing

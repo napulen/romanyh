@@ -5,6 +5,7 @@ from music21.pitch import Pitch
 
 
 def valid_voicing(s):
+    """Verifies a string of 4 space-separated pitches as a valid voicing."""
     pitchStrings = s.split()
     if len(pitchStrings) != 4:
         msg = "The voicing should have exactly 4 notes"
