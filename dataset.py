@@ -5,7 +5,17 @@ import os
 from romanyh.transposition import transposeRomanText
 
 
-def downloadAndExtract(listFile=None):
+def isAnalysisFile(f):
+    """Checks whether file 'f' is a RomanText analysis file."""
+    return "analysis" in f and "feedback_on" not in f and f.endswith("txt")
+
+
+def isScoreFile(f):
+    """Checks whether file 'f' is a compressed MusicXML score file."""
+    return "score" in f and "analysis_on" not in f and f.endswith("mxl")
+
+
+def downloadAndExtract(listFile=None, analysisOnly=True):
     """Downloads and extracts all RomanText files in When-in-Rome.
 
     The script gets the latest master branch of the When-in-Rome repository,
@@ -25,7 +35,10 @@ def downloadAndExtract(listFile=None):
     repo = ZipFile(tmpZipFile)
     directory = []
     for f in sorted(repo.namelist()):
-        if "analysis" in f and "feedback_on" not in f and f.endswith("txt"):
+        if isAnalysisFile(f):
+            localFileName = repo.extract(f)
+            directory.append(localFileName)
+        elif not analysisOnly and isScoreFile(f):
             localFileName = repo.extract(f)
             directory.append(localFileName)
     if listFile:
