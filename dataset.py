@@ -37,10 +37,13 @@ def downloadAndExtract(listFile=None, analysisOnly=True):
     for f in sorted(repo.namelist()):
         if isAnalysisFile(f):
             localFileName = repo.extract(f)
-            directory.append(localFileName)
-        elif not analysisOnly and isScoreFile(f):
+            directory.append(f)
+        elif (
+            not analysisOnly
+            and isScoreFile(f)
+            and f.replace("score.mxl", "analysis.txt") in directory
+        ):
             localFileName = repo.extract(f)
-            directory.append(localFileName)
     if listFile:
         with open(listFile, "w") as fout:
             fout.write("\n".join(directory))
