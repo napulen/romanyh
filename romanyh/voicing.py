@@ -216,7 +216,7 @@ def voiceChord(pitches, closePosition=False):
 def progressionCost(key, pitches1, pitches2):
     """Computes the cost of two successive chords.
 
-    The cost is computed based on around a dozen rules.
+    The cost is computed based on voice-leading rules.
     The rules have been implemented from David Huron's
     'Voice Leading: The Science Behind the Musical Art.'
 
