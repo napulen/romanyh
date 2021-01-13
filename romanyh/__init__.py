@@ -15,6 +15,7 @@ def harmonizations(
     tonic=None,
     firstVoicing=None,
     lastVoicing=None,
+    allowedUnisons=0,
 ):
     """Yields harmonizations for a RomanText input."""
     if tonic:
@@ -24,7 +25,7 @@ def harmonizations(
         romantext = parse(inputFile, format="rntext")
     romanNumerals = normalizeRomanNumerals(romantext)
     costTable = solveProgression(
-        romanNumerals, closePosition, firstVoicing, lastVoicing
+        romanNumerals, closePosition, firstVoicing, lastVoicing, allowedUnisons
     )
     for progression, cost in generateHarmonization(costTable):
         romantextcopy = copy.deepcopy(romantext)
@@ -39,10 +40,11 @@ def harmonize(
     tonic=None,
     firstVoicing=None,
     lastVoicing=None,
+    allowedUnisons=0,
 ):
     """Returns the best harmonization for a RomanText input."""
     return next(
         harmonizations(
-            inputFile, closePosition, tonic, firstVoicing, lastVoicing
+            inputFile, closePosition, tonic, firstVoicing, lastVoicing, allowedUnisons
         )
     )

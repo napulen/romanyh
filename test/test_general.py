@@ -59,19 +59,19 @@ def romanNumeralsToPitches(romanNumerals):
 class TestGeneral(unittest.TestCase):
     def test_voicing_length_strings(self):
         pitches = ("C4", "E4", "G4")
-        voicings = voiceChord(pitches)
+        voicings = voiceChord(pitches, allowedUnisons=1)
         self.assertEqual(len(voicings), 43)
 
     def test_voicing_length_chord(self):
         chord = Chord("C4 E4 G4")
         pitches = [p.nameWithOctave for p in chord.pitches]
-        voicings = voiceChord(tuple(pitches))
+        voicings = voiceChord(tuple(pitches), allowedUnisons=1)
         self.assertEqual(len(voicings), 43)
 
     def test_voicing_length_romannumerals(self):
         rn = RomanNumeral("I", "C")
         pitches = [p.nameWithOctave for p in rn.pitches]
-        voicings = voiceChord(tuple(pitches))
+        voicings = voiceChord(tuple(pitches), allowedUnisons=1)
         self.assertEqual(len(voicings), 43)
 
     def test_voicing_cost(self):
@@ -89,7 +89,7 @@ class TestGeneral(unittest.TestCase):
             RomanNumeral("I", "C"),
             RomanNumeral("V", "C"),
         ]
-        solveProgression(progression)
+        solveProgression(progression, allowedUnisons=1)
         caches = getCaches()
         cachesGT = (
             {"hits": 3956, "misses": 95},  # getChordFromPitches

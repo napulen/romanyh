@@ -68,6 +68,13 @@ def main():
         type=valid_voicing,
         help="Fix the last voicing to something of your liking",
     )
+    parser.add_argument(
+        "--unison",
+        action="store_const",
+        const=1,
+        default=0,
+        help="Allow voicings with two voices in unison once in a while.",
+    )
 
     args = parser.parse_args()
     for i, score in enumerate(
@@ -77,6 +84,7 @@ def main():
             args.tonic,
             args.first_voicing,
             args.last_voicing,
+            args.unison
         )
     ):
         if i == args.harmonizations:

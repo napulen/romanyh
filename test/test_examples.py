@@ -113,13 +113,13 @@ class TestTrivialExample(unittest.TestCase):
     def test_voicing_length(self):
         pitchTuples = romanNumeralsToPitches(self.romanNumerals)
         for i, pitches in enumerate(pitchTuples):
-            voicings = voiceChord(pitches)
+            voicings = voiceChord(pitches, allowedUnisons=1)
             voicingLengthGT = self.voicingsLengthGT[i]
             with self.subTest(msg=str(pitches)):
                 self.assertEqual(len(voicings), voicingLengthGT)
 
     def test_cache_info(self):
-        solveProgression(self.romanNumerals)
+        solveProgression(self.romanNumerals, allowedUnisons=1)
         caches = getCaches()
         for i, cache in enumerate(caches):
             cacheName, cacheInfo = cache

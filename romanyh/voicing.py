@@ -127,14 +127,16 @@ def isTriad(pitches):
     return getChordFromPitches(pitches).isTriad()
 
 
-def _voice(part, voicingSoFar, remainingNotes, closePosition=False):
+def _voice(
+    part, voicingSoFar, remainingNotes, closePosition=False, allowedUnisons=0
+):
     if not remainingNotes:
         # Time to break the recursion
         pitches = tuple(voicingSoFar)
         intervals = [getInterval(pitches[i], pitches[i + 1]) for i in range(3)]
         if not closePosition:
             if (
-                intervals.count(perfectUnison) <= 1
+                intervals.count(perfectUnison) <= allowedUnisons
                 and 1 <= intervals[1].generic.directed <= 8
                 and 1 <= intervals[2].generic.directed <= 8
             ):
@@ -143,7 +145,7 @@ def _voice(part, voicingSoFar, remainingNotes, closePosition=False):
         else:
             tenorSoprano = getInterval(pitches[1], pitches[3])
             if (
-                intervals.count(perfectUnison) <= 1
+                intervals.count(perfectUnison) <= allowedUnisons
                 and 1 <= tenorSoprano.generic.directed <= 8
             ):
                 yield pitches
@@ -166,10 +168,11 @@ def _voice(part, voicingSoFar, remainingNotes, closePosition=False):
                     voicingSoFar + [pitchName],
                     newRemaining,
                     closePosition,
+                    allowedUnisons
                 )
 
 
-def _voiceChord(pitches, closePosition=False):
+def _voiceChord(pitches, closePosition=False, allowedUnisons=0):
     chord = getChordFromPitches(pitches)
     pitchNames = list(chord.pitchNames)
     doublings = []
@@ -202,14 +205,15 @@ def _voiceChord(pitches, closePosition=False):
                     [bassPitchName],
                     doubling[1:],
                     closePosition,
+                    allowedUnisons,
                 )
 
 
 @lru_cache(maxsize=None)
-def voiceChord(pitches, closePosition=False):
+def voiceChord(pitches, closePosition=False, allowedUnisons=0):
     """Cached method. Return the possible voicings for a tuple of pitches."""
     cachedVoiceChord.append(pitches)
-    return [v for v in _voiceChord(pitches, closePosition)]
+    return [v for v in _voiceChord(pitches, closePosition, allowedUnisons)]
 
 
 @lru_cache(maxsize=None)
@@ -398,7 +402,11 @@ def chordCost(pitches):
 
 
 def solveProgression(
-    romanNumerals, closePosition=False, firstVoicing=None, lastVoicing=None
+    romanNumerals,
+    closePosition=False,
+    firstVoicing=None,
+    lastVoicing=None,
+    allowedUnisons=0,
 ):
     """Voices a chord progression in a specified key using DP.
 
@@ -416,7 +424,7 @@ def solveProgression(
         elif i == (len(romanNumerals) - 1) and lastVoicing:
             voicings = [lastVoicing]
         else:
-            voicings = voiceChord(pitches, closePosition)
+            voicings = voiceChord(pitches, closePosition, allowedUnisons)
         if i == 0:
             for v in voicings:
                 costTable[0][v] = (chordCost(v), None)
