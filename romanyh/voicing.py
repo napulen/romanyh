@@ -217,9 +217,37 @@ def progressionCost(key, pitches1, pitches2):
     """Computes the cost of two successive chords.
 
     The cost is computed based on around a dozen rules.
-    The rules are mostly defined in terms of vertical and
-    horizontal intervals, although some structural considerations
-    are taken into account (e.g., sevenths being resolved)."""
+    The rules have been implemented from David Huron's
+    'Voice Leading: The Science Behind the Musical Art.'
+
+    The rules have been implemented according to the
+    descriptions in Chapter 2, with the following exceptions:
+
+    1. Compass rule: E2 instead of F2 on the lower end of the range.
+    3. Chord spacing rule: Huron's description implemented as
+       "Open position" form. Additionally, "Close position"
+       form is implemented, with one octave between the tenor and soprano
+       (easy to play on the piano: bass on the left hand and three upper
+       voices on the right hand).
+    4. By default, unisons are not allowed.
+       An option for allowing them is made available. If allowed,
+       unisons must they arrive from a third in contrary motion
+       and depart to a third in contrary motion.
+    5-8. Implemented as follows:
+       - Oblique and stepwise melodic motion preferred
+       - If not oblique or stepwise, melodic motion by third is preferred
+       - If not third, melodic motion by fourth or fifth are preferred
+       - If not fourth or fifth, melodic motion by octave is preferred
+       - All other melodic motions forbidden (i.e., seventh and beyond octave)
+    12. Omitted. Lighter version (rule 11) is implemented.
+    13. Applied in octaves and fifths to bass and soprano only.
+    14. Not implemented but enforced by rule 11.
+        Doubling of chromatic pitches not implemented due to complexity.
+    15. Not implemented.
+    16. Implementing as described results in forbidding augmented unisons,
+        which are necessary for passages with chromatic melodic lines.
+        Augmented 4ths, diminished 5ths, and augmented 2nds are forbidden.
+    """
     cachedProgressionCost.append((key, pitches1, pitches2))
     chord1 = getChordFromPitches(pitches1)
     chord2 = getChordFromPitches(pitches2)
