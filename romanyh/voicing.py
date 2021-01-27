@@ -29,14 +29,17 @@ _ruleCostMapping = {
     Rule.SEVENTH_UNPREPARED: Cost.BAD,
     Rule.SEVENTH_UNRESOLVED: Cost.VERYBAD,
     Rule.LEADINGTONE_UNRESOLVED: Cost.VERYBAD,
+    Rule.SUPERTONIC_UNRESOLVED: Cost.VERYBAD,
     # voicing rules
     Rule.VERTICAL_NOT_DOUBLINGROOT: Cost.NOTIDEAL,
     Rule.VERTICAL_SEVENTH_MISSINGNOTE: Cost.MAYBEBAD,
+    Rule.VERTICAL_INCOMPLETE_TRIAD: Cost.MAYBEBAD,
 }
 
 
 def applyRule(rule):
     """Given a rule enum, provide the cost of breaking that rule."""
+    print(rule)
     return _ruleCostMapping[rule]
 
 
@@ -168,7 +171,7 @@ def _voice(
                     voicingSoFar + [pitchName],
                     newRemaining,
                     closePosition,
-                    allowedUnisons
+                    allowedUnisons,
                 )
 
 
@@ -183,6 +186,8 @@ def _voiceChord(pitches, closePosition=False, allowedUnisons=0):
                 pitchNames + [chord.fifth.name],
                 pitchNames + [chord.third.name],
                 pitchNames[:2] + [chord.root().name] * 2,
+                [chord.root().name] * 2 + [chord.fifth.name] * 2,
+                [chord.root().name] * 3 + [chord.fifth.name],
             ]
         elif chord.inversion() == 2:
             doublings = [
@@ -252,6 +257,7 @@ def progressionCost(key, pitches1, pitches2):
         which are necessary for passages with chromatic melodic lines.
         Augmented 4ths, diminished 5ths, and augmented 2nds are forbidden.
     """
+    print(pitches1, pitches2)
     cachedProgressionCost.append((key, pitches1, pitches2))
     chord1 = getChordFromPitches(pitches1)
     chord2 = getChordFromPitches(pitches2)
@@ -312,25 +318,35 @@ def progressionCost(key, pitches1, pitches2):
         # Parallel octave/unison
         elif i1j1.generic.mod7 == 1 and i2j2.generic.mod7 == 1:
             cost += applyRule(Rule.PARALLEL_OCTAVE)
+        if (
+            i2j2.generic.mod7 == 5
+            and hLower.direction.name == hUpper.direction.name == "ASCENDING"
+        ):
+            cost += applyRule(Rule.HIDDEN_FIFTH)
+        elif (
+            i2j2.generic.mod7 == 1
+            and hLower.direction.name == hUpper.direction.name == "ASCENDING"
+        ):
+            cost += applyRule(Rule.HIDDEN_OCTAVE)
 
-    # Hidden octaves/fifths in extreme voices
-    if (
-        verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 5
-        and horizontalIntervals[PartEnum.BASS] != perfectUnison
-        and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
-        and horizontalIntervals[PartEnum.BASS].direction
-        == horizontalIntervals[PartEnum.SOPRANO].direction
-    ):
-        cost += applyRule(Rule.HIDDEN_FIFTH)
+    # # Hidden octaves/fifths in extreme voices
+    # if (
+    #     verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 5
+    #     and horizontalIntervals[PartEnum.BASS] != perfectUnison
+    #     and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
+    #     and horizontalIntervals[PartEnum.BASS].direction
+    #     == horizontalIntervals[PartEnum.SOPRANO].direction
+    # ):
+    #     cost += applyRule(Rule.HIDDEN_FIFTH)
 
-    if (
-        verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 1
-        and horizontalIntervals[PartEnum.BASS] != perfectUnison
-        and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
-        and horizontalIntervals[PartEnum.BASS].direction
-        == horizontalIntervals[PartEnum.SOPRANO].direction
-    ):
-        cost += applyRule(Rule.HIDDEN_OCTAVE)
+    # if (
+    #     verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 1
+    #     and horizontalIntervals[PartEnum.BASS] != perfectUnison
+    #     and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
+    #     and horizontalIntervals[PartEnum.BASS].direction
+    #     == horizontalIntervals[PartEnum.SOPRANO].direction
+    # ):
+    #     cost += applyRule(Rule.HIDDEN_OCTAVE)
 
     # Voice crossing
     for i in range(3):
@@ -363,18 +379,19 @@ def progressionCost(key, pitches1, pitches2):
     # Leading tone resolution
     k = getKeyFromString(key)
     leadingTone = getLeadingTone(key).name
+    supertonic = k.pitchFromDegree(2).name
     root1 = chord1.root().name
     root2 = chord2.root().name
     if root1 == k.pitchFromDegree(5).name or root1 == leadingTone:
         if root2 == k.tonic.name or root2 == k.pitchFromDegree(6):
             if leadingTone in chord1.pitchNames:
                 leadingToneIndex = chord1.pitchNames.index(leadingTone)
-                if (
-                    horizontalIntervals[leadingToneIndex].directedName != "m2"
-                    and horizontalIntervals[leadingToneIndex].directedName
-                    != "M-3"
-                ):
+                if horizontalIntervals[leadingToneIndex].directedName != "m2":
                     cost += applyRule(Rule.LEADINGTONE_UNRESOLVED)
+            if supertonic in chord1.pitchNames:
+                supertonicIndex = chord1.pitchNames.index(supertonic)
+                if horizontalIntervals[supertonicIndex].directedName != "M-2":
+                    cost += applyRule(Rule.SUPERTONIC_UNRESOLVED)
 
     return cost
 
@@ -389,15 +406,16 @@ def chordCost(pitches):
     cachedChordCost.append(pitches)
     chord = getChordFromPitches(pitches)
     cost = 0
-    if isTriad(frozenset(chord.pitchNames)):
+    if chord.seventh:
+        if set(chord.pitchNames) != 4:
+            cost += applyRule(Rule.VERTICAL_SEVENTH_MISSINGNOTE)
+    else:
+        if len(set(chord.pitchNames)) != 3:
+            cost += applyRule(Rule.VERTICAL_INCOMPLETE_TRIAD)
         if chord.inversion() < 2:
             # In root postion and first inversion, double the root
             if chord.pitchNames.count(chord.root().name) <= 1:
                 cost += applyRule(Rule.VERTICAL_NOT_DOUBLINGROOT)
-    elif chord.seventh:
-        # In seventh chords, prefer to play all the notes
-        if set(chord.pitchNames) != 4:
-            cost += applyRule(Rule.VERTICAL_SEVENTH_MISSINGNOTE)
     return cost
 
 
