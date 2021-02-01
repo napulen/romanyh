@@ -329,24 +329,24 @@ def progressionCost(key, pitches1, pitches2):
         ):
             cost += applyRule(Rule.HIDDEN_OCTAVE)
 
-    # # Hidden octaves/fifths in extreme voices
-    # if (
-    #     verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 5
-    #     and horizontalIntervals[PartEnum.BASS] != perfectUnison
-    #     and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
-    #     and horizontalIntervals[PartEnum.BASS].direction
-    #     == horizontalIntervals[PartEnum.SOPRANO].direction
-    # ):
-    #     cost += applyRule(Rule.HIDDEN_FIFTH)
+    # Hidden octaves/fifths in extreme voices
+    if (
+        verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 5
+        and horizontalIntervals[PartEnum.BASS] != perfectUnison
+        and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
+        and horizontalIntervals[PartEnum.BASS].direction
+        == horizontalIntervals[PartEnum.SOPRANO].direction
+    ):
+        cost += applyRule(Rule.HIDDEN_FIFTH)
 
-    # if (
-    #     verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 1
-    #     and horizontalIntervals[PartEnum.BASS] != perfectUnison
-    #     and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
-    #     and horizontalIntervals[PartEnum.BASS].direction
-    #     == horizontalIntervals[PartEnum.SOPRANO].direction
-    # ):
-    #     cost += applyRule(Rule.HIDDEN_OCTAVE)
+    if (
+        verticalIntervals2[IntervalV.BASS_SOPRANO].generic.mod7 == 1
+        and horizontalIntervals[PartEnum.BASS] != perfectUnison
+        and horizontalIntervals[PartEnum.SOPRANO] != perfectUnison
+        and horizontalIntervals[PartEnum.BASS].direction
+        == horizontalIntervals[PartEnum.SOPRANO].direction
+    ):
+        cost += applyRule(Rule.HIDDEN_OCTAVE)
 
     # Voice crossing
     for i in range(3):
